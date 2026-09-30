@@ -4,10 +4,11 @@ import type { Product } from '../types/product'
 export interface CartItem { product: Product; quantity: number }
 interface CartContextValue { items: CartItem[]; count: number; total: number; isOpen: boolean; add: (product: Product, quantity?: number) => void; update: (id: string, quantity: number) => void; remove: (id: string) => void; setIsOpen: (open: boolean) => void }
 const CartContext = createContext<CartContextValue | undefined>(undefined)
-const key = 'happy-paws-cart'
+const key = 'mypetfood-cart'
+const legacyKey = 'happy-paws-cart'
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(() => { try { return JSON.parse(localStorage.getItem(key) ?? '[]') as CartItem[] } catch { return [] } })
+  const [items, setItems] = useState<CartItem[]>(() => { try { return JSON.parse(localStorage.getItem(key) ?? localStorage.getItem(legacyKey) ?? '[]') as CartItem[] } catch { return [] } })
   const [isOpen, setIsOpen] = useState(false)
   useEffect(() => { localStorage.setItem(key, JSON.stringify(items)) }, [items])
   const value = useMemo(() => ({

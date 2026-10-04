@@ -30,7 +30,7 @@ export function apiProductToProduct(product: ApiProduct): Product {
     pet: pets.includes(pet) ? pet : 'Dogs',
     category: categories.includes(category) ? category : 'Accessories',
     price: product.price.amount / 100,
-    image: product.image.url,
+    image: product.image?.url ?? '',
     description: product.description,
     rating: product.ratingAverage,
     reviewCount: product.reviewCount,

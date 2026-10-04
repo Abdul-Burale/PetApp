@@ -33,7 +33,7 @@ export interface ApiProduct {
   category: string
   price: { amount: number; currency: string }
   available: boolean
-  image: { url: string; altText: string; position?: number }
+  image: { url: string; altText: string; position?: number } | null
   featured: boolean
   badge: string | null
   ratingAverage: number | null
@@ -90,6 +90,13 @@ export interface AdminProductInput {
   widthMm: number | null
   heightMm: number | null
   images: Array<{ url: string; altText: string }>
+}
+
+export interface ProductImageUploadAuthorization {
+  uploadUrl: string
+  token: string
+  path: string
+  publicUrl: string
 }
 
 export class BackendApiError extends Error {
@@ -237,4 +244,9 @@ export async function setProductActivation(id: string, active: boolean): Promise
   const response = await apiFetch(`/v1/staff/products/${encodeURIComponent(id)}/activation`, { method: 'PATCH', body: JSON.stringify({ active }) })
   const payload = await jsonResponse<AdminProduct | { data: AdminProduct }>(response, 'The product visibility could not be changed.')
   return unwrapData(payload)
+}
+
+export async function requestProductImageUpload(input: { fileName: string; contentType: string; sizeBytes: number }): Promise<ProductImageUploadAuthorization> {
+  const response = await apiFetch('/v1/staff/product-images/upload-url', { method: 'POST', body: JSON.stringify(input) })
+  return jsonResponse<ProductImageUploadAuthorization>(response, 'The image upload could not be authorised.')
 }

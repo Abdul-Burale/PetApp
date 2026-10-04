@@ -150,7 +150,7 @@ async function publicFetch(path: string, init: RequestInit = {}) {
   if (init.body) headers.set('Content-Type', 'application/json')
   const url = apiUrl(path)
   try {
-    return await fetch(url, { ...init, headers })
+    return await fetch(url, { cache: 'no-store', ...init, headers })
   } catch {
     throw new BackendApiError('The catalogue could not be reached. Please try again later.')
   }

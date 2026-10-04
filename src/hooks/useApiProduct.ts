@@ -9,7 +9,8 @@ export function useApiProduct(slug: string) {
     queryFn: async (): Promise<Product> => {
       const detail = await getApiProduct(slug)
       const product = apiProductToProduct(detail.product)
-      return product.image || !detail.images[0]?.url ? product : { ...product, image: detail.images[0].url }
+      const detailImage = detail.images[0]?.url
+      return detailImage ? { ...product, image: detailImage } : product
     },
     staleTime: catalogueStaleTime,
     enabled: Boolean(slug),

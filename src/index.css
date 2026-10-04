@@ -4,3 +4,10 @@
 
 @layer base { html { scroll-behavior: smooth; } body { @apply bg-white text-ink antialiased; } button, input, select { font: inherit; } }
 @layer components { .container-page { @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8; } .btn { @apply inline-flex items-center justify-center gap-2 rounded-sm px-5 py-3 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2; } .btn-primary { @apply btn bg-brand text-white hover:bg-brand/90; } .btn-secondary { @apply btn border border-brand bg-white text-brand hover:bg-sand; } .section-title { @apply text-2xl font-bold tracking-tight sm:text-3xl; } }
+
+/* Keep the staff marker noticeable without making the account page feel alarming. */
+section.border-2.border-red-600.bg-red-50 { border-width: 1px !important; border-color: #d97835 !important; background-color: #f6f4ee !important; }
+section.border-2.border-red-600.bg-red-50 .text-red-700,
+section.border-2.border-red-600.bg-red-50 .text-red-900,
+section.border-2.border-red-600.bg-red-50 .text-red-800 { color: #1f4d3b !important; }
+section.border-2.border-red-600.bg-red-50 .bg-red-600 { background-color: #1f4d3b !important; }

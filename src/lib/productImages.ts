@@ -23,7 +23,7 @@ export async function uploadProductImage(file: File) {
     cacheControl: '31536000',
     contentType: file.type,
   })
-  if (error) throw new Error(error.message || 'The image could not be uploaded.')
+  if (error) throw new Error(`Image upload failed: ${error.message || 'The image could not be uploaded.'}`)
 
   return authorization.publicUrl
 }

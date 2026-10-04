@@ -1,15 +1,20 @@
 import type { Session, User } from '@supabase/supabase-js'
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { getMyAccount, type BackendAccount } from '../lib/api'
 import { supabase, supabaseConfigurationError } from '../lib/supabase'
 
 interface AuthContextValue {
   session: Session | null
   user: User | null
+  backendAccount: BackendAccount | null
+  backendLoading: boolean
+  backendError: string | null
   loading: boolean
   configurationError: string | null
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string) => Promise<Session | null>
   signOut: () => Promise<void>
+  refreshBackendAccount: () => Promise<BackendAccount | null>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -17,6 +22,9 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [backendAccount, setBackendAccount] = useState<BackendAccount | null>(null)
+  const [backendLoading, setBackendLoading] = useState(false)
+  const [backendError, setBackendError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!supabase) {
@@ -44,9 +52,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!session) {
+      setBackendAccount(null)
+      setBackendError(null)
+      setBackendLoading(false)
+      return
+    }
+
+    let active = true
+    setBackendAccount(null)
+    setBackendLoading(true)
+    setBackendError(null)
+    void getMyAccount()
+      .then(account => {
+        if (active) {
+          setBackendAccount(account)
+          setBackendError(null)
+        }
+      })
+      .catch(error => {
+        if (active) setBackendError(error instanceof Error ? error.message : 'Your account could not be loaded.')
+      })
+      .finally(() => {
+        if (active) setBackendLoading(false)
+      })
+
+    return () => { active = false }
+  }, [session?.access_token])
+
   const value = useMemo<AuthContextValue>(() => ({
     session,
     user: session?.user ?? null,
+    backendAccount,
+    backendLoading,
+    backendError,
     loading,
     configurationError: supabaseConfigurationError,
     signIn: async (email, password) => {
@@ -71,7 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
     },
-  }), [loading, session])
+    refreshBackendAccount: async () => {
+      if (!session) return null
+      const account = await getMyAccount()
+      setBackendAccount(account)
+      setBackendError(null)
+      return account
+    },
+  }), [backendAccount, backendError, backendLoading, loading, session])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

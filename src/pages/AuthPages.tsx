@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { BackendApiError, getMyAccount, type BackendAccount } from '../lib/api'
+import { BackendApiError, createAddress, deleteAddress, listAddresses, updateAddress, updateMyAccount, type BackendAddress } from '../lib/api'
 
 interface LoginLocationState { from?: string }
 
@@ -72,28 +72,67 @@ export function SignupPage() {
 }
 
 export function AccountPage() {
-  const { session, user, signOut } = useAuth()
-  const [account, setAccount] = useState<BackendAccount | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { user, backendAccount: account, backendLoading: loading, backendError: accountError, refreshBackendAccount, signOut } = useAuth()
   const [error, setError] = useState<string | null>(null)
+  const [savedMessage, setSavedMessage] = useState<string | null>(null)
+  const [displayName, setDisplayName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [addresses, setAddresses] = useState<BackendAddress[]>([])
+  const [addressLoading, setAddressLoading] = useState(false)
+  const [addressFormOpen, setAddressFormOpen] = useState(false)
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
+  const [addressSaving, setAddressSaving] = useState(false)
+  const [address, setAddress] = useState({ label: 'Home', recipientName: '', line1: '', line2: '', city: '', county: '', postcode: '', phone: '', isDefault: false })
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (!session?.access_token) return
-    const controller = new AbortController()
-    setLoading(true)
+    setDisplayName(account?.displayName ?? '')
+    setPhone(account?.phone ?? '')
+  }, [account])
+
+  useEffect(() => {
+    if (!account) return
+    let active = true
+    setAddressLoading(true)
+    void listAddresses().then(result => { if (active) setAddresses(result) }).catch(caught => { if (active) setError(caught instanceof Error ? caught.message : 'Your addresses could not be loaded.') }).finally(() => { if (active) setAddressLoading(false) })
+    return () => { active = false }
+  }, [account])
+
+  const saveProfile = async (event: FormEvent) => {
+    event.preventDefault()
+    setSaving(true); setError(null); setSavedMessage(null)
+    try {
+      await updateMyAccount({ displayName: displayName.trim(), phone: phone.trim() })
+      await refreshBackendAccount()
+      setSavedMessage('Your account details have been saved.')
+    } catch (caught) {
+      setError(caught instanceof BackendApiError ? caught.message : 'Your account details could not be saved.')
+    } finally { setSaving(false) }
+  }
+
+  const saveAddress = async (event: FormEvent) => {
+    event.preventDefault(); setAddressSaving(true); setError(null)
+    try {
+      const input = { ...address, line2: address.line2 || null, county: address.county || null, phone: address.phone || null }
+      const saved = editingAddressId ? await updateAddress(editingAddressId, input) : await createAddress(input)
+      setAddresses(current => editingAddressId ? current.map(item => item.id === saved.id ? saved : item) : [...current, saved]); setAddressFormOpen(false); setEditingAddressId(null)
+      setAddress({ label: 'Home', recipientName: '', line1: '', line2: '', city: '', county: '', postcode: '', phone: '', isDefault: false })
+    } catch (caught) { setError(caught instanceof BackendApiError ? caught.message : 'Your address could not be saved.') }
+    finally { setAddressSaving(false) }
+  }
+
+  const editAddress = (item: BackendAddress) => {
+    setEditingAddressId(item.id)
+    setAddress({ label: item.label ?? 'Home', recipientName: item.recipientName, line1: item.line1, line2: item.line2 ?? '', city: item.city, county: item.county ?? '', postcode: item.postcode, phone: item.phone ?? '', isDefault: item.isDefault })
+    setAddressFormOpen(true)
+  }
+
+  const removeAddress = async (id: string) => {
     setError(null)
-    void getMyAccount(session.access_token, controller.signal)
-      .then(setAccount)
-      .catch(caught => {
-        if (caught instanceof DOMException && caught.name === 'AbortError') return
-        setError(caught instanceof BackendApiError ? caught.message : 'Your account could not be loaded.')
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    return () => controller.abort()
-  }, [session?.access_token])
+      try { await deleteAddress(id); setAddresses(current => current.filter(item => item.id !== id)); if (editingAddressId === id) { setEditingAddressId(null); setAddressFormOpen(false) } }
+    catch (caught) { setError(caught instanceof BackendApiError ? caught.message : 'Your address could not be deleted.') }
+  }
 
   const logout = async () => {
     setError(null)
@@ -105,5 +144,6 @@ export function AccountPage() {
     }
   }
 
-  return <main className="container-page py-12"><div className="mx-auto max-w-2xl"><p className="text-sm text-gray-500"><Link to="/">Home</Link> / Account</p><div className="mt-5 border border-line bg-white p-6 shadow-card sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">Your account</p><h1 className="mt-2 text-3xl font-bold">Welcome back</h1><p className="mt-2 text-gray-600">{account?.displayName ?? account?.email ?? user?.email}</p></div><button type="button" onClick={logout} className="btn-secondary shrink-0">Sign out</button></div>{loading&&<p className="mt-7 text-sm text-gray-600">Loading your account…</p>}{error&&<div role="alert" className="mt-7 border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800"><b className="block">We couldn’t load your account.</b>{error}</div>}{!loading&&!error&&<div className="mt-7 border-l-4 border-brand bg-sand p-4"><p className="font-bold text-brand">Account verified</p><p className="mt-1 text-sm text-gray-700">Your Supabase session was accepted by the My Pet Food API.</p></div>}</div></div></main>
+  const displayError = error ?? accountError
+  return <main className="container-page py-12"><div className="mx-auto max-w-2xl"><p className="text-sm text-gray-500"><Link to="/">Home</Link> / Account</p><div className="mt-5 border border-line bg-white p-6 shadow-card sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">Your account</p><h1 className="mt-2 text-3xl font-bold">Welcome back</h1><p className="mt-2 text-gray-600">{account?.email ?? user?.email}</p></div><button type="button" onClick={logout} className="btn-secondary shrink-0">Sign out</button></div>{loading&&<p className="mt-7 text-sm text-gray-600">Loading your account…</p>}{displayError&&<div role="alert" className="mt-7 border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800"><b className="block">{accountError ? 'We couldn’t load your account.' : 'We couldn’t complete that request.'}</b>{displayError}</div>}{!loading&&account&&<><form onSubmit={saveProfile} className="mt-7 space-y-4 border-t border-line pt-6"><h2 className="text-lg font-bold">Your details</h2><div><label htmlFor="account-name" className="mb-1 block text-sm font-bold">Name</label><input id="account-name" value={displayName} onChange={event => setDisplayName(event.target.value)} className="w-full border border-line px-3 py-2.5" /></div><div><label htmlFor="account-email" className="mb-1 block text-sm font-bold">Email</label><input id="account-email" value={account.email ?? user?.email ?? ''} readOnly className="w-full border border-line bg-gray-50 px-3 py-2.5 text-gray-600" /></div><div><label htmlFor="account-phone" className="mb-1 block text-sm font-bold">Phone</label><input id="account-phone" type="tel" value={phone} onChange={event => setPhone(event.target.value)} className="w-full border border-line px-3 py-2.5" /></div><div className="flex items-center gap-3"><button className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save details'}</button>{savedMessage&&<span className="text-sm text-green-700">{savedMessage}</span>}</div></form><section className="mt-8 border-t border-line pt-6"><div className="flex items-center justify-between"><h2 className="text-lg font-bold">Delivery addresses</h2><button type="button" className="text-sm font-bold text-brand underline" onClick={() => { setAddressFormOpen(value => !value); setEditingAddressId(null) }}>{addressFormOpen ? 'Cancel' : 'Add address'}</button></div>{addressLoading&&<p className="mt-4 text-sm text-gray-600">Loading addresses…</p>}{!addressLoading&&!addresses.length&&<p className="mt-4 text-sm text-gray-600">No saved addresses yet.</p>}<div className="mt-4 grid gap-3">{addresses.map(item => <div key={item.id} className="border border-line p-4 text-sm"><div className="flex justify-between gap-3"><p className="font-bold">{item.label ?? 'Address'}{item.isDefault&&<span className="ml-2 text-xs font-normal text-gray-500">Default</span>}</p><div className="flex gap-3"><button type="button" onClick={() => editAddress(item)} className="text-xs text-brand underline">Edit</button><button type="button" onClick={() => void removeAddress(item.id)} className="text-xs text-gray-600 underline">Delete</button></div></div><p className="mt-2 leading-6 text-gray-700">{item.recipientName}<br/>{item.line1}{item.line2&&<><br/>{item.line2}</>}<br/>{item.city}{item.county&&`, ${item.county}`}<br/>{item.postcode}</p></div>)}</div>{addressFormOpen&&<form onSubmit={saveAddress} className="mt-5 grid gap-3 border border-line bg-sand p-4 sm:grid-cols-2"><h3 className="sm:col-span-2 font-bold">{editingAddressId ? 'Edit delivery address' : 'Add delivery address'}</h3>{([['label','Label'],['recipientName','Recipient name'],['line1','Address line 1'],['line2','Address line 2'],['city','Town/city'],['county','County'],['postcode','Postcode'],['phone','Phone']] as const).map(([field,label]) => <label key={field} className="text-sm"><span className="mb-1 block font-bold">{label}</span><input required={!['line2','county','phone'].includes(field)} value={address[field]} onChange={event => setAddress(current => ({ ...current, [field]: event.target.value }))} className="w-full border border-line bg-white px-3 py-2" /></label>)}<label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={address.isDefault} onChange={event => setAddress(current => ({ ...current, isDefault: event.target.checked }))}/> Make this my default address</label><button className="btn-primary sm:col-span-2" disabled={addressSaving}>{addressSaving ? 'Saving…' : editingAddressId ? 'Save address' : 'Add address'}</button></form>}</section></>}</div></div></main>
 }

@@ -1,12 +1,99 @@
+import { supabase } from './supabase'
+
 export interface BackendAccount {
   id?: string
   email?: string
+  role?: string
   displayName?: string
-  [key: string]: unknown
+  phone?: string
+}
+
+export interface BackendAddress {
+  id: string
+  label?: string | null
+  recipientName: string
+  line1: string
+  line2?: string | null
+  city: string
+  county?: string | null
+  postcode: string
+  phone?: string | null
+  isDefault: boolean
+  countryCode?: string
+  createdAt?: string
+}
+
+export interface ApiProduct {
+  id: string
+  sku: string
+  slug: string
+  name: string
+  description: string
+  pet: string
+  category: string
+  price: { amount: number; currency: string }
+  available: boolean
+  image: { url: string; altText: string; position?: number }
+  featured: boolean
+  badge: string | null
+  ratingAverage: number | null
+  reviewCount: number
+}
+
+export interface ApiProductDetail {
+  product: ApiProduct
+  images: Array<{ url: string; altText: string; position: number }>
+  weightGrams: number
+  lengthMm: number | null
+  widthMm: number | null
+  heightMm: number | null
+}
+
+export interface AdminProduct {
+  id: string
+  sku: string
+  slug: string
+  name: string
+  description: string
+  pet: string
+  category: string
+  pricePence: number
+  taxRateBps: number
+  pricesIncludeTax: boolean
+  stockOnHand: number
+  stockReserved?: number
+  active: boolean
+  featured: boolean
+  badge: string | null
+  weightGrams: number
+  lengthMm: number | null
+  widthMm: number | null
+  heightMm: number | null
+  images: Array<{ url: string; altText: string }>
+}
+
+export interface AdminProductInput {
+  sku: string
+  slug: string
+  name: string
+  description: string
+  pet: string
+  category: string
+  pricePence: number
+  taxRateBps: number
+  pricesIncludeTax: boolean
+  stockOnHand: number
+  featured: boolean
+  badge: string | null
+  weightGrams: number
+  lengthMm: number | null
+  widthMm: number | null
+  heightMm: number | null
+  images: Array<{ url: string; altText: string }>
 }
 
 export class BackendApiError extends Error {
-  constructor(message: string, public readonly status?: number) {
+  constructor(message: string, public readonly status?: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string | string[]>) {
     super(message)
     this.name = 'BackendApiError'
   }
@@ -18,39 +105,136 @@ function apiUrl(path: string) {
   return `${baseUrl}${path}`
 }
 
-export async function getMyAccount(accessToken: string, signal?: AbortSignal): Promise<BackendAccount> {
-  let response: Response
-
+async function readError(response: Response, fallback: string) {
   try {
-    response = await fetch(apiUrl('/v1/me'), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal,
-    })
-  } catch (error) {
-    if (error instanceof BackendApiError || (error instanceof DOMException && error.name === 'AbortError')) throw error
+    const body = await response.json() as { error?: { code?: string; message?: string; fieldErrors?: Record<string, string | string[]> } }
+    if (body.error) {
+      const message = response.status === 401 ? 'Your session has expired. Please sign in again.' : response.status === 403 ? 'You do not have permission to perform this action.' : response.status === 404 ? 'The requested resource could not be found.' : body.error.message ?? fallback
+      return new BackendApiError(message, response.status, body.error.code, body.error.fieldErrors)
+    }
+  } catch {
+    // The response was not the API's JSON error envelope.
+  }
+  const message = response.status === 401 ? 'Your session has expired. Please sign in again.' : response.status === 403 ? 'You do not have permission to perform this action.' : response.status === 404 ? 'The requested resource could not be found.' : fallback
+  return new BackendApiError(message, response.status)
+}
+
+export async function apiFetch(path: string, init: RequestInit = {}) {
+  if (!supabase) throw new BackendApiError('Authentication is not configured.')
+  const { data, error } = await supabase.auth.getSession()
+  if (error) throw new BackendApiError('Your session could not be read. Please sign in again.')
+
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/json')
+  if (init.body) headers.set('Content-Type', 'application/json')
+  if (data.session?.access_token) headers.set('Authorization', `Bearer ${data.session.access_token}`)
+
+  const url = apiUrl(path)
+  try {
+    return await fetch(url, { ...init, headers })
+  } catch {
     throw new BackendApiError('The account service could not be reached. Please try again later.')
   }
+}
 
-  if (response.status === 401 || response.status === 403) {
-    throw new BackendApiError('Your login succeeded, but the account service could not authenticate this session.', response.status)
+async function publicFetch(path: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/json')
+  if (init.body) headers.set('Content-Type', 'application/json')
+  const url = apiUrl(path)
+  try {
+    return await fetch(url, { ...init, headers })
+  } catch {
+    throw new BackendApiError('The catalogue could not be reached. Please try again later.')
   }
+}
 
-  if (!response.ok) {
-    throw new BackendApiError('The account service is temporarily unavailable. Please try again later.', response.status)
-  }
+async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
+  if (!response.ok) throw await readError(response, fallback)
+  if (response.status === 204) return undefined as T
+  return response.json() as Promise<T>
+}
 
-  const payload: unknown = await response.json()
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new BackendApiError('The account service returned an invalid response.', response.status)
-  }
+function unwrapData<T>(payload: T | { data: T }): T {
+  return typeof payload === 'object' && payload !== null && 'data' in payload ? payload.data : payload as T
+}
 
-  if ('data' in payload) {
-    const data = payload.data
-    if (!data || typeof data !== 'object' || Array.isArray(data)) {
-      throw new BackendApiError('The account service returned an invalid response.', response.status)
-    }
-    return data as BackendAccount
-  }
+export async function getMyAccount(): Promise<BackendAccount> {
+  const response = await apiFetch('/v1/me')
+  return jsonResponse<BackendAccount>(response, 'Your account could not be loaded.')
+}
 
-  return payload as BackendAccount
+export async function updateMyAccount(input: { displayName: string; phone: string }): Promise<BackendAccount> {
+  const response = await apiFetch('/v1/me', { method: 'PATCH', body: JSON.stringify(input) })
+  return jsonResponse<BackendAccount>(response, 'Your account details could not be saved.')
+}
+
+export async function listAddresses(): Promise<BackendAddress[]> {
+  const response = await apiFetch('/v1/me/addresses')
+  const payload = await jsonResponse<BackendAddress[] | { data: BackendAddress[] }>(response, 'Your addresses could not be loaded.')
+  return unwrapData(payload)
+}
+
+export async function createAddress(input: Omit<BackendAddress, 'id'>): Promise<BackendAddress> {
+  const response = await apiFetch('/v1/me/addresses', { method: 'POST', body: JSON.stringify(input) })
+  return jsonResponse<BackendAddress>(response, 'Your address could not be saved.')
+}
+
+export async function deleteAddress(id: string): Promise<void> {
+  const response = await apiFetch(`/v1/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  await jsonResponse<void>(response, 'Your address could not be deleted.')
+}
+
+export async function updateAddress(id: string, input: Omit<BackendAddress, 'id' | 'countryCode' | 'createdAt'>): Promise<BackendAddress> {
+  const response = await apiFetch(`/v1/me/addresses/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) })
+  return jsonResponse<BackendAddress>(response, 'Your address could not be updated.')
+}
+
+export async function listApiProducts(): Promise<ApiProduct[]> {
+  let cursor: string | null = null
+  const products: ApiProduct[] = []
+  do {
+    const query = new URLSearchParams({ limit: '100' })
+    if (cursor) query.set('cursor', cursor)
+    const response = await publicFetch(`/v1/products?${query.toString()}`)
+    const payload = await jsonResponse<{ data: ApiProduct[]; nextCursor?: string | null; hasMore?: boolean }>(response, 'The catalogue could not be loaded.')
+    products.push(...payload.data)
+    cursor = payload.hasMore ? payload.nextCursor ?? null : null
+  } while (cursor)
+  return products
+}
+
+export async function getApiProduct(slug: string): Promise<ApiProductDetail> {
+  const response = await publicFetch(`/v1/products/${encodeURIComponent(slug)}`)
+  return jsonResponse<ApiProductDetail>(response, 'The product could not be loaded.')
+}
+
+export async function listAdminProducts(): Promise<AdminProduct[]> {
+  const response = await apiFetch('/v1/staff/products')
+  const payload = await jsonResponse<AdminProduct[] | { data: AdminProduct[] }>(response, 'The product catalogue could not be loaded.')
+  return unwrapData(payload)
+}
+
+export async function getAdminProduct(id: string): Promise<AdminProduct> {
+  const response = await apiFetch(`/v1/staff/products/${encodeURIComponent(id)}`)
+  const payload = await jsonResponse<AdminProduct | { data: AdminProduct }>(response, 'The product could not be loaded.')
+  return unwrapData(payload)
+}
+
+export async function createAdminProduct(input: AdminProductInput): Promise<AdminProduct> {
+  const response = await apiFetch('/v1/staff/products', { method: 'POST', body: JSON.stringify(input) })
+  const payload = await jsonResponse<AdminProduct | { data: AdminProduct }>(response, 'The product could not be created.')
+  return unwrapData(payload)
+}
+
+export async function updateAdminProduct(id: string, input: AdminProductInput): Promise<AdminProduct> {
+  const response = await apiFetch(`/v1/staff/products/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) })
+  const payload = await jsonResponse<AdminProduct | { data: AdminProduct }>(response, 'The product could not be updated.')
+  return unwrapData(payload)
+}
+
+export async function setProductActivation(id: string, active: boolean): Promise<AdminProduct> {
+  const response = await apiFetch(`/v1/staff/products/${encodeURIComponent(id)}/activation`, { method: 'PATCH', body: JSON.stringify({ active }) })
+  const payload = await jsonResponse<AdminProduct | { data: AdminProduct }>(response, 'The product visibility could not be changed.')
+  return unwrapData(payload)
 }

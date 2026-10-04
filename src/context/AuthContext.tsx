@@ -8,6 +8,7 @@ interface AuthContextValue {
   loading: boolean
   configurationError: string | null
   signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string) => Promise<Session | null>
   signOut: () => Promise<void>
 }
 
@@ -53,6 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
       setSession(data.session)
+    },
+    signUp: async (email, password) => {
+      if (!supabase) throw new Error(supabaseConfigurationError ?? 'Sign up is not configured.')
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: `${window.location.origin}/account` },
+      })
+      if (error) throw error
+      setSession(data.session)
+      return data.session
     },
     signOut: async () => {
       if (!supabase) return

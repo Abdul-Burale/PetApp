@@ -1,6 +1,24 @@
-import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
+import { ShoppingBag, X } from 'lucide-react'
+import { useId } from 'react'
 import { Link } from 'react-router-dom'
 import { useCart } from '../../context/CartContext'
-import { ProductImage } from './ProductImage'
+import { useCatalog } from '../../context/CatalogContext'
+import { OverlayDialog } from '../layout/OverlayDialog'
+import { BasketItem } from './BasketItem'
 
-export function CartDrawer() { const { items, total, isOpen, setIsOpen, update, remove } = useCart(); return <div className={`fixed inset-0 z-50 ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'}`} aria-hidden={!isOpen}><div onClick={() => setIsOpen(false)} className={`absolute inset-0 bg-ink/40 transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`} /><aside className={`absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`} aria-label="Shopping basket"><div className="flex items-center justify-between border-b border-line p-5"><h2 className="flex items-center gap-2 text-lg font-bold"><ShoppingBag size={20}/> Your basket</h2><button onClick={() => setIsOpen(false)} aria-label="Close basket" className="p-2 hover:bg-sand"><X /></button></div><div className="flex-1 overflow-auto p-5">{items.length === 0 ? <p className="py-14 text-center text-gray-600">Your basket is waiting for some lovely things.</p> : <div className="space-y-5">{items.map(({ product, quantity }) => <div className="flex gap-3" key={product.id}><ProductImage src={product.image} alt={product.name} className="h-20 w-20 object-cover"/><div className="flex-1"><p className="font-bold leading-tight">{product.name}</p><p className="mt-1 text-sm">£{product.price.toFixed(2)}</p><div className="mt-3 flex items-center justify-between"><div className="flex items-center border border-line"><button aria-label="Decrease quantity" onClick={() => update(product.id, quantity - 1)} className="p-1.5"><Minus size={14}/></button><span className="w-7 text-center text-sm">{quantity}</span><button aria-label="Increase quantity" onClick={() => update(product.id, quantity + 1)} className="p-1.5"><Plus size={14}/></button></div><button aria-label="Remove item" onClick={() => remove(product.id)} className="text-gray-500 hover:text-accent"><Trash2 size={17}/></button></div></div></div>)}</div>}</div><div className="border-t border-line p-5"><div className="mb-4 flex justify-between text-lg font-bold"><span>Subtotal</span><span>£{total.toFixed(2)}</span></div><p className="mb-4 text-xs text-gray-600">Delivery is calculated at checkout. Free UK delivery on orders over £45.</p><Link to="/checkout" onClick={() => setIsOpen(false)} className="btn-primary w-full">Checkout</Link><Link to="/basket" onClick={() => setIsOpen(false)} className="mt-3 block text-center text-sm font-bold text-brand underline">View basket</Link></div></aside></div> }
+export function CartDrawer() {
+  const { items, total, isOpen, setIsOpen } = useCart()
+  const { loading, error } = useCatalog()
+  const id = useId(), unavailable = items.some(item => !item.product.available || item.unavailableReason)
+  const blocked = !items.length || unavailable || loading || Boolean(error)
+  return <OverlayDialog open={isOpen} onClose={() => setIsOpen(false)} labelledBy={id}>
+    <div className="flex items-center justify-between border-b border-line p-5"><h2 id={id} className="flex items-center gap-2 text-lg font-bold"><ShoppingBag size={20} />Your basket</h2><button onClick={() => setIsOpen(false)} aria-label="Close basket" className="rounded p-2 hover:bg-sand"><X /></button></div>
+    <div className="min-h-0 flex-1 overflow-y-auto p-5">{items.length ? <div className="divide-y divide-line">{items.map(item => <BasketItem key={item.product.id} item={item} onNavigate={() => setIsOpen(false)} />)}</div> : <div className="py-12 text-center"><p className="text-gray-600">Your basket is empty.</p><Link to="/shop" onClick={() => setIsOpen(false)} className="btn-secondary mt-5">Browse products</Link></div>}</div>
+    <div className="border-t border-line p-5"><div className="flex justify-between text-lg font-bold"><span>Subtotal</span><span>£{total.toFixed(2)}</span></div><p className="mt-3 text-sm leading-6 text-gray-600">Check delivery options and an estimated total in your basket.</p>
+      {unavailable && <p role="alert" className="mt-3 text-sm text-red-800">Remove unavailable items before continuing.</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-red-800">Product availability could not be checked. Please open your basket and try again.</p>}
+      {blocked ? <button disabled className="btn-primary mt-4 w-full opacity-50">{loading ? 'Checking availability…' : 'Checkout'}</button> : <Link to="/checkout" onClick={() => setIsOpen(false)} className="btn-primary mt-4 w-full">Checkout</Link>}
+      <Link to="/basket" onClick={() => setIsOpen(false)} className="mt-3 block py-2 text-center text-sm font-bold text-brand underline">View basket</Link>
+    </div>
+  </OverlayDialog>
+}

@@ -1,56 +1,84 @@
-import { Minus, Plus, Star } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Minus, Plus, Star, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ProductGrid } from '../components/shop/ProductGrid'
 import { ProductImage } from '../components/shop/ProductImage'
+import { SearchForm } from '../components/shop/SearchForm'
 import { useCatalog } from '../context/CatalogContext'
-import { useCart } from '../context/CartContext'
+import { useCart, maxCartQuantity } from '../context/CartContext'
 import { useApiProduct } from '../hooks/useApiProduct'
+import { catalogFilters, categories, filterCatalog, pets } from '../lib/catalog'
+import type { Pet } from '../types/product'
 
-const pets = ['Cats', 'Dogs', 'Birds'] as const
-
-function CatalogState({ loading, error }: { loading: boolean; error: string | null }) {
-  if (loading) return <p className="border border-line p-10 text-center text-gray-600">Loading products…</p>
-  if (error) return <p role="alert" className="border border-red-200 bg-red-50 p-10 text-center text-sm text-red-800">{error}</p>
-  return null
-}
-
-export function ShopPage() {
+function CatalogListing({ fixedPet }: { fixedPet?: Pet }) {
   const [params, setParams] = useSearchParams()
-  const [search, setSearch] = useState(params.get('q') ?? '')
-  const { products, loading, error } = useCatalog()
-  const category = params.get('category') ?? ''
-  const pet = params.get('pet') ?? ''
-  const [sort, setSort] = useState('featured')
-  const list = useMemo(() => products
-    .filter(product => `${product.name} ${product.category} ${product.pet}`.toLowerCase().includes(search.toLowerCase()))
-    .filter(product => !category || product.category === category)
-    .filter(product => !pet || product.pet === pet)
-    .filter(product => !params.get('offer') || product.badge === 'Offer')
-    .sort((a, b) => sort === 'low' ? a.price - b.price : sort === 'high' ? b.price - a.price : 0),
-  [category, params, pet, products, search, sort])
-
-  return <main className="container-page py-10"><p className="text-sm text-gray-500"><Link to="/">Home</Link> / Shop</p><h1 className="mt-2 text-3xl font-bold">{pet ? `${pet} products` : 'Shop pet supplies'}</h1><p className="mt-2 max-w-2xl text-gray-600">Carefully selected essentials for happy, healthy pets — delivered across the UK.</p><div className="mt-8 grid gap-3 border-y border-line py-4 md:grid-cols-[1fr_auto_auto]"><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search products" className="border border-line px-3 py-2.5 text-sm outline-none focus:border-brand"/><select value={category} onChange={event => setParams(current => { if (event.target.value) current.set('category', event.target.value); else current.delete('category'); return current })} className="border border-line bg-white px-3 py-2.5 text-sm"><option value="">All categories</option>{['Food', 'Treats', 'Toys', 'Health', 'Grooming', 'Accessories', 'Walking'].map(value => <option key={value}>{value}</option>)}</select><select value={sort} onChange={event => setSort(event.target.value)} className="border border-line bg-white px-3 py-2.5 text-sm"><option value="featured">Featured</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select></div><p className="my-5 text-sm text-gray-600">{loading ? 'Loading…' : `${list.length} products`}</p>{loading || error ? <CatalogState loading={loading} error={error}/> : <ProductGrid products={list}/>}</main>
+  const { products, loading, error, refresh } = useCatalog()
+  const filters = catalogFilters(params, fixedPet)
+  const list = filterCatalog(products, filters)
+  function change(key: string, values: string[]) {
+    setParams(current => {
+      const next = new URLSearchParams(current)
+      next.delete(key); values.forEach(value => next.append(key, value))
+      if (key === 'q' && next.get('sort') === 'relevance') next.delete('sort')
+      return next
+    })
+  }
+  const title = fixedPet ? `${fixedPet} products` : filters.query ? `Results for “${filters.query}”` : filters.offers ? 'Offers' : filters.pet ? `${filters.pet} products` : 'Shop pet supplies'
+  const chips = [
+    ...(filters.query ? [{ label: `Search: ${filters.query}`, remove: () => change('q', []) }] : []),
+    ...filters.categories.map(category => ({ label: category, remove: () => change('category', filters.categories.filter(value => value !== category)) })),
+    ...(!fixedPet && filters.pet ? [{ label: filters.pet, remove: () => change('pet', []) }] : []),
+    ...(filters.offers ? [{ label: 'Offers', remove: () => change('offer', []) }] : []),
+    ...(filters.availableOnly ? [{ label: 'Available now', remove: () => change('available', []) }] : []),
+  ]
+  return <main className="container-page py-8 sm:py-10">
+    <nav aria-label="Breadcrumb" className="text-sm text-gray-500"><Link to="/">Home</Link> / {fixedPet ?? 'Shop'}</nav>
+    <header className="mt-5 rounded-xl bg-sand p-6 sm:p-8"><p className="text-xs font-bold uppercase tracking-widest text-accent">{fixedPet ? `Shop for ${fixedPet.toLowerCase()}` : 'Find their everyday essentials'}</p><h1 className="mt-2 break-words text-3xl font-bold">{title}</h1><p className="mt-3 max-w-2xl text-gray-600">Browse food, treats, toys and care. Choose a category or search for what you need.</p></header>
+    <section aria-label="Product filters" className="mt-7 space-y-4 rounded-xl border border-line bg-white p-4 sm:p-5">
+      <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+        <SearchForm label="Search this collection" initialQuery={filters.query} onSearch={query => change('q', query ? [query] : [])} />
+        <label className="text-xs font-semibold">Sort products<select value={filters.sort} onChange={event => change('sort', [event.target.value])} className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm font-normal"><option value="relevance">Relevance</option><option value="featured">Featured</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select></label>
+      </div>
+      <div className="flex flex-wrap items-start gap-4">
+        <details className="min-w-44 rounded-lg border border-line"><summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold">Categories{filters.categories.length ? ` (${filters.categories.length})` : ''}</summary><fieldset className="space-y-2 border-t border-line p-4"><legend className="sr-only">Filter by category</legend>{categories.map(category => <label key={category} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={filters.categories.includes(category)} onChange={event => change('category', event.target.checked ? [...filters.categories, category] : filters.categories.filter(value => value !== category))} />{category}</label>)}</fieldset></details>
+        {!fixedPet && <label className="flex items-center gap-2 text-sm font-semibold">Pet<select value={filters.pet ?? ''} onChange={event => change('pet', event.target.value ? [event.target.value] : [])} className="rounded-lg border border-line bg-white px-3 py-2.5 font-normal"><option value="">All pets</option>{pets.map(pet => <option key={pet}>{pet}</option>)}</select></label>}
+        <label className="flex items-center gap-2 py-2.5 text-sm"><input type="checkbox" checked={filters.availableOnly} onChange={event => change('available', event.target.checked ? ['true'] : [])} />Available now</label>
+        <label className="flex items-center gap-2 py-2.5 text-sm"><input type="checkbox" checked={filters.offers} onChange={event => change('offer', event.target.checked ? ['true'] : [])} />Offers only</label>
+      </div>
+      {chips.length > 0 && <div aria-label="Active filters" className="flex flex-wrap items-center gap-2 border-t border-line pt-4">{chips.map(chip => <button key={chip.label} type="button" onClick={chip.remove} aria-label={chip.label.startsWith('Search:') ? 'Clear search' : `Remove ${chip.label} filter`} className="inline-flex max-w-full items-center gap-2 rounded-full bg-sand px-3 py-2 text-sm text-brand"><span className="min-w-0 break-words">{chip.label}</span><X size={14} className="shrink-0" /></button>)}<button type="button" onClick={() => setParams(new URLSearchParams())} className="px-2 py-2 text-sm font-semibold text-brand underline">Clear all</button></div>}
+    </section>
+    <p role="status" className="my-5 text-sm text-gray-600">{loading ? 'Loading products…' : error ? 'Products could not be loaded' : `${list.length} ${list.length === 1 ? 'product' : 'products'}${filters.query ? ` matching “${filters.query}”` : ''}`}</p>
+    {error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6"><p>{error}</p><button onClick={() => void refresh()} className="btn-secondary mt-4">Retry loading products</button></div> : loading ? <div aria-hidden="true" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="aspect-square animate-pulse rounded-lg bg-sand" />)}</div> : list.length ? <ProductGrid products={list} /> : <section className="rounded-xl border border-dashed border-line bg-sand/40 p-8 text-center"><h2 className="text-xl font-bold">No products match{filters.query ? ` “${filters.query}”` : ' these filters'}</h2><p className="mt-3 text-sm text-gray-600">Try fewer words, remove a filter, or browse by pet.</p><div className="mt-5 flex flex-wrap justify-center gap-3"><button onClick={() => setParams(new URLSearchParams())} className="btn-secondary">Clear search and filters</button>{pets.map(pet => <Link key={pet} to={`/category/${pet.toLowerCase()}`} className="btn-secondary">Shop {pet.toLowerCase()}</Link>)}</div></section>}
+  </main>
 }
 
+export function ShopPage() { return <CatalogListing /> }
 export function CategoryPage() {
-  const { category = '' } = useParams()
-  const { products, loading, error } = useCatalog()
-  const pet = pets.find(value => value.toLowerCase() === category.toLowerCase())
-  const list = products.filter(product => product.pet === pet)
-  return <main className="container-page py-10"><p className="text-sm text-gray-500"><Link to="/">Home</Link> / {pet ?? 'Shop'}</p><div className="mt-4 border-l-4 border-accent bg-sand p-7"><p className="text-xs font-bold uppercase tracking-wider text-accent">Shop for {pet}</p><h1 className="mt-1 text-3xl font-bold">{pet ?? 'Pet supplies'}</h1><p className="mt-2 max-w-xl text-gray-700">{pet === 'Cats' ? 'Food, playtime favourites and home comforts for curious cats.' : pet === 'Dogs' ? 'Everyday essentials for wagging tails, adventures and quiet nights in.' : 'Thoughtful food, toys and care for bright, happy birds.'}</p></div><div className="mt-9">{loading || error ? <CatalogState loading={loading} error={error}/> : <ProductGrid products={list}/>}</div></main>
+  const { category } = useParams()
+  const pet = pets.find(value => value.toLowerCase() === category?.toLowerCase())
+  return pet ? <CatalogListing fixedPet={pet} /> : <main className="container-page py-16"><h1 className="section-title">Category not found</h1><Link to="/shop" className="btn-secondary mt-5">Browse all products</Link></main>
 }
 
 export function ProductPage() {
   const { slug = '' } = useParams()
-  const { products, loading } = useCatalog()
-  const { product: detailProduct, loading: detailLoading } = useApiProduct(slug)
-  const product = detailProduct ?? products.find(value => value.slug === slug) ?? null
+  const { product, loading, error } = useApiProduct(slug)
   const { add } = useCart()
-  const [quantity, setQuantity] = useState(1)
-
-  if (loading || detailLoading) return <main className="container-page py-20"><p className="text-center text-gray-600">Loading product…</p></main>
-  if (!product) return <main className="container-page py-20"><h1 className="text-2xl font-bold">Product not found</h1><Link className="mt-4 inline-block text-brand underline" to="/shop">Back to shop</Link></main>
-
-  return <main className="container-page py-8 sm:py-12"><p className="text-sm text-gray-500"><Link to="/">Home</Link> / <Link to={`/category/${product.pet.toLowerCase()}`}>{product.pet}</Link> / {product.name}</p><div className="mt-6 grid gap-8 lg:grid-cols-2 lg:gap-14"><div className="aspect-square bg-sand"><ProductImage src={product.image} alt={product.name} className="h-full w-full object-cover"/></div><div className="py-2"><p className="text-xs font-bold uppercase tracking-wider text-brand">{product.pet} · {product.category}</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{product.name}</h1>{product.rating !== null && <div className="mt-4 flex items-center gap-2 text-sm"><Star size={17} className="fill-accent text-accent"/><b>{product.rating.toFixed(1)}</b><span className="text-gray-500">{product.reviewCount} reviews</span></div>}<p className="mt-5 text-2xl font-bold">£{product.price.toFixed(2)}</p><p className="mt-5 max-w-lg leading-7 text-gray-700">{product.description}</p><div className="mt-8 flex gap-3"><div className="flex items-center border border-line"><button aria-label="Decrease quantity" onClick={() => setQuantity(value => Math.max(1, value - 1))} className="p-3"><Minus size={17}/></button><span className="w-9 text-center font-bold">{quantity}</span><button aria-label="Increase quantity" onClick={() => setQuantity(value => value + 1)} className="p-3"><Plus size={17}/></button></div><button disabled={!product.available} onClick={() => add(product, quantity)} className="btn-primary flex-1 disabled:cursor-not-allowed disabled:opacity-50">{product.available ? 'Add to basket' : 'Unavailable'}</button></div><div className="mt-9 border-t border-line pt-6"><h2 className="font-bold">Delivery information</h2><p className="mt-2 text-sm leading-6 text-gray-600">Orders are carefully packed and dispatched from our UK store. Free standard delivery on orders over £45.</p></div></div></div></main>
+  const [quantity, setQuantity] = useState(1), [imageIndex, setImageIndex] = useState(0)
+  useEffect(() => { setQuantity(1); setImageIndex(0) }, [slug])
+  if (loading) return <main className="container-page py-20"><p role="status">Loading product…</p></main>
+  if (!product) return <main className="container-page py-20"><h1 className="section-title">{error ? 'Product could not be loaded' : 'Product not found'}</h1>{error && <p role="alert" className="mt-3 text-gray-600">{error}</p>}<Link className="btn-secondary mt-5" to="/shop">Back to shop</Link></main>
+  const images = product.images.length ? product.images : [{ url: product.image, altText: product.name, position: 0 }]
+  const selectedImage = images[imageIndex] ?? images[0]
+  return <main className="container-page py-8 sm:py-12">
+    <nav aria-label="Breadcrumb" className="text-sm text-gray-500"><Link to="/">Home</Link> / <Link to={`/category/${product.pet.toLowerCase()}`}>{product.pet}</Link> / {product.name}</nav>
+    <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:gap-14"><section aria-label="Product images"><div className="aspect-square rounded-xl bg-sand p-4"><ProductImage src={selectedImage.url} alt={selectedImage.altText || product.name} className="h-full w-full object-contain" /></div>{images.length > 1 && <div className="mt-4 flex flex-wrap gap-3">{images.map((image, index) => <button key={`${image.url}-${index}`} onClick={() => setImageIndex(index)} aria-label={`Show product image ${index + 1}`} aria-pressed={imageIndex === index} className={`h-20 w-20 overflow-hidden rounded-lg border-2 p-1 ${imageIndex === index ? 'border-brand' : 'border-line'}`}><ProductImage src={image.url} alt="" className="h-full w-full object-contain" /></button>)}</div>}</section>
+      <section className="py-2"><p className="text-xs font-bold uppercase tracking-wider text-brand">{product.pet} · {product.category}</p><h1 className="mt-2 break-words text-3xl font-bold tracking-tight sm:text-4xl">{product.name}</h1>
+        {product.rating !== null && product.reviewCount > 0 && <div className="mt-4 flex items-center gap-2 text-sm"><Star size={17} className="fill-accent text-accent" aria-hidden="true" /><b>{product.rating.toFixed(1)}</b><span className="text-gray-500">{product.reviewCount} reviews</span></div>}
+        <p className="mt-5 text-3xl font-bold">£{product.price.toFixed(2)}</p><p className={`mt-2 text-sm font-semibold ${product.available ? 'text-brand' : 'text-gray-600'}`}>{product.available ? 'Available to order' : 'Currently unavailable'}</p>
+        <p className="mt-6 whitespace-pre-wrap break-words leading-7 text-gray-700">{product.description}</p><dl className="mt-5 flex flex-wrap gap-x-8 gap-y-2 text-sm text-gray-600"><div><dt className="inline font-semibold">Product reference: </dt><dd className="inline">{product.sku}</dd></div>{product.weightGrams > 0 && <div><dt className="inline font-semibold">Package weight: </dt><dd className="inline">{product.weightGrams >= 1000 ? `${product.weightGrams / 1000} kg` : `${product.weightGrams} g`}</dd></div>}</dl>
+        <div className="mt-8 flex gap-3"><div className="flex items-center rounded-lg border border-line"><button aria-label="Decrease quantity" disabled={quantity === 1} onClick={() => setQuantity(value => Math.max(1, value - 1))} className="p-3 disabled:opacity-40"><Minus size={17} /></button><label className="sr-only" htmlFor="product-quantity">Quantity</label><input id="product-quantity" type="number" min={1} max={maxCartQuantity} value={quantity} onChange={event => setQuantity(Math.max(1, Math.min(maxCartQuantity, Math.floor(Number(event.target.value) || 1))))} className="w-14 bg-transparent text-center font-bold" /><button aria-label="Increase quantity" disabled={quantity >= maxCartQuantity} onClick={() => setQuantity(value => Math.min(maxCartQuantity, value + 1))} className="p-3 disabled:opacity-40"><Plus size={17} /></button></div><button disabled={!product.available} onClick={() => add(product, quantity)} className="btn-primary flex-1 disabled:cursor-not-allowed disabled:opacity-50">{product.available ? 'Add to basket' : 'Unavailable'}</button></div><p className="mt-2 text-xs italic text-gray-500">Up to {maxCartQuantity} per product. Availability is checked when requesting delivery.</p>
+        <div className="mt-8 rounded-xl bg-sand p-5"><h2 className="font-bold">Delivery & returns</h2><p className="mt-2 text-sm leading-6 text-gray-600">Check delivery options for your postcode in the basket.</p><div className="mt-3 flex flex-wrap gap-5 text-sm font-semibold text-brand"><Link to="/delivery" className="underline">Delivery information</Link><Link to="/returns" className="underline">Returns information</Link><Link to="/contact" className="underline">Ask a question</Link></div></div>
+      </section>
+    </div>
+  </main>
 }

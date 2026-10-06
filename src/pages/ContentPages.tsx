@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ArrowRight, BookOpen, Clock3, Heart, Mail, MapPin, Phone, RotateCcw, Truck } from 'lucide-react'
 import { BackendApiError, getContentPage, getSiteContent, submitContactMessage, type ContentPage, type ContentContact } from '../lib/api'
 import { pageBriefs, pageSlugs, plainTextError, type PageSlug } from '../lib/contentPages'
@@ -150,11 +150,16 @@ function ContactForm() {
 }
 
 export function ContentPageView({ slug }: { slug: PageSlug }) {
+  const { hash } = useLocation()
   const brief = pageBriefs[slug]
   const pageQuery = useQuery({ queryKey: ['content-page', slug], queryFn: () => getContentPage(slug), retry: false, staleTime: 0 })
   const siteQuery = useQuery({ queryKey: ['site-content'], queryFn: getSiteContent, enabled: slug === 'contact', retry: false })
   const page = pageQuery.data
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }) }, [slug])
+  useEffect(() => {
+    if (!page || !/^#section-\d+$/.test(hash)) return
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }, [hash, page])
   useEffect(() => {
     const previous = document.title
     document.title = `${page?.title ?? brief.title} | My Pet Food`

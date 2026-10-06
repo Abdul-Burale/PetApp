@@ -49,6 +49,31 @@ export interface ApiProductDetail {
   heightMm: number | null
 }
 
+export interface DeliveryQuoteInput {
+  postcode: string
+  countryCode: 'GB'
+  items: Array<{ productId: string; quantity: number }>
+}
+
+export interface DeliveryQuote {
+  code: string
+  name: string
+  price: { amount: number; currency: string }
+  estimatedBusinessDays: { min: number; max: number }
+}
+
+export async function getDeliveryQuotes(input: DeliveryQuoteInput, signal?: AbortSignal): Promise<DeliveryQuote[]> {
+  const response = await publicFetch('/v1/delivery-quotes', { method: 'POST', body: JSON.stringify(input), signal }, 'The delivery service could not be reached. Please try again later.')
+  const payload = await jsonResponse<{ data: DeliveryQuote[] }>(response, 'Delivery options could not be checked. Please try again.')
+  if (!Array.isArray(payload.data) || payload.data.some(quote => !quote || typeof quote.code !== 'string' || typeof quote.name !== 'string'
+    || !quote.price || !Number.isInteger(quote.price.amount) || quote.price.amount < 0 || quote.price.currency !== 'GBP'
+    || !quote.estimatedBusinessDays || !Number.isInteger(quote.estimatedBusinessDays.min) || !Number.isInteger(quote.estimatedBusinessDays.max)
+    || quote.estimatedBusinessDays.min < 0 || quote.estimatedBusinessDays.max < quote.estimatedBusinessDays.min)) {
+    throw new BackendApiError('Delivery information could not be read. Please try again later.')
+  }
+  return payload.data
+}
+
 export interface AdminProduct {
   id: string
   sku: string
@@ -186,15 +211,16 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   }
 }
 
-async function publicFetch(path: string, init: RequestInit = {}) {
+async function publicFetch(path: string, init: RequestInit = {}, unreachableMessage = 'The catalogue could not be reached. Please try again later.') {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
   if (init.body) headers.set('Content-Type', 'application/json')
   const url = apiUrl(path)
   try {
     return await fetch(url, { cache: 'no-store', ...init, headers })
-  } catch {
-    throw new BackendApiError('The catalogue could not be reached. Please try again later.')
+  } catch (error) {
+    if (init.signal?.aborted) throw error
+    throw new BackendApiError(unreachableMessage)
   }
 }
 

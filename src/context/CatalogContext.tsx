@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react'
 import { useCart } from './CartContext'
-import { listApiProducts, type ApiProduct } from '../lib/api'
-import type { Product, ProductCategory, Pet } from '../types/product'
+import { listApiProducts } from '../lib/api'
+import { apiProductToProduct } from '../lib/product'
+import type { Product } from '../types/product'
+export { apiProductToProduct } from '../lib/product'
 
 interface CatalogContextValue {
   products: Product[]
@@ -15,30 +17,6 @@ const CatalogContext = createContext<CatalogContextValue | undefined>(undefined)
 export const productsQueryKey = ['products'] as const
 export const productQueryKey = (slug: string) => ['product', slug] as const
 export const catalogueStaleTime = 10 * 60 * 1000
-const titleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
-const pets: Pet[] = ['Cats', 'Dogs', 'Birds']
-const categories: ProductCategory[] = ['Food', 'Treats', 'Toys', 'Health', 'Grooming', 'Accessories', 'Walking']
-
-export function apiProductToProduct(product: ApiProduct): Product {
-  const pet = titleCase(product.pet) as Pet
-  const category = titleCase(product.category) as ProductCategory
-  return {
-    id: product.id,
-    sku: product.sku,
-    slug: product.slug,
-    name: product.name,
-    pet: pets.includes(pet) ? pet : 'Dogs',
-    category: categories.includes(category) ? category : 'Accessories',
-    price: product.price.amount / 100,
-    image: product.image?.url ?? '',
-    description: product.description,
-    rating: product.ratingAverage,
-    reviewCount: product.reviewCount,
-    badge: product.badge ? titleCase(product.badge) as Product['badge'] : undefined,
-    featured: product.featured,
-    available: product.available,
-  }
-}
 
 export function CatalogProvider({ children }: { children: ReactNode }) {
   const { reconcile } = useCart()
@@ -47,6 +25,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     queryKey: productsQueryKey,
     queryFn: async () => (await listApiProducts()).map(apiProductToProduct),
     staleTime: catalogueStaleTime,
+    retry: 1,
   })
   const products = query.data ?? []
   const loading = query.isPending

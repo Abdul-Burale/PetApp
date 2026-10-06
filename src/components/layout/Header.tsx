@@ -6,9 +6,9 @@ import { useAuth } from '../../context/AuthContext'
 
 const petMenu = { Cats:['Food','Treats','Toys','Grooming','Health'], Dogs:['Food','Treats','Toys','Walking','Grooming','Health'], Birds:['Food','Treats','Toys','Cage Accessories','Health'] }
 const nav = ['Cats','Dogs','Birds','Food & Treats','Health & Care','Toys & Accessories','Offers']
-const adminLinkClass = 'my-1 flex items-center rounded border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-950 shadow-sm transition hover:bg-emerald-100'
-const adminMobileClass = 'mx-1 my-2 block rounded border border-emerald-200 bg-emerald-50 px-3 py-3 font-bold text-emerald-950 hover:bg-emerald-100'
-const adminBadgeClass = 'ml-2 rounded bg-emerald-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-950'
+const adminLinkClass = 'my-1 flex items-center rounded border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-red-950 shadow-sm transition hover:bg-rose-100'
+const adminMobileClass = 'mx-1 my-2 block rounded border border-rose-200 bg-rose-50 px-3 py-3 font-bold text-red-950 hover:bg-rose-100'
+const adminBadgeClass = 'ml-2 rounded bg-rose-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-red-950'
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)

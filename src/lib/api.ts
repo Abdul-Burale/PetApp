@@ -302,34 +302,39 @@ function normalizeContactContent(contact: Partial<SiteContent['contact']> & { ph
 
 export async function getSiteContent(): Promise<SiteContent> {
   const response = await publicFetch('/v1/content/site')
-  const content = await jsonResponse<Omit<SiteContent, 'contact'> & { contact: Partial<SiteContent['contact']> & { phone?: string } }>(response, 'Store information could not be loaded.')
+  const payload = await jsonResponse<(Omit<SiteContent, 'contact'> & { contact: Partial<SiteContent['contact']> & { phone?: string } }) | { data: Omit<SiteContent, 'contact'> & { contact: Partial<SiteContent['contact']> & { phone?: string } } }>(response, 'Store information could not be loaded.')
+  const content = unwrapData(payload)
   return { ...content, contact: normalizeContactContent(content.contact) }
 }
 
 export async function getContentPage(slug: string): Promise<ContentPage> {
   const response = await publicFetch(`/v1/content/pages/${encodeURIComponent(slug)}`)
-  return jsonResponse<ContentPage>(response, 'This page could not be loaded.')
+  const payload = await jsonResponse<ContentPage | { data: ContentPage }>(response, 'This page could not be loaded.')
+  return unwrapData(payload)
 }
 
 export async function getStaffContentPage(slug: string): Promise<ContentPage> {
   const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`)
-  return jsonResponse<ContentPage>(response, 'The content page could not be loaded.')
+  const payload = await jsonResponse<ContentPage | { data: ContentPage }>(response, 'The content page could not be loaded.')
+  return unwrapData(payload)
 }
 
 export async function updateStaffContentPage(slug: string, input: EditableContentPage & { version: number }): Promise<ContentPage> {
   const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`, { method: 'PUT', body: JSON.stringify(input) })
-  return jsonResponse<ContentPage>(response, 'The content page could not be saved.')
+  const payload = await jsonResponse<ContentPage | { data: ContentPage }>(response, 'The content page could not be saved.')
+  return unwrapData(payload)
 }
 
 export async function updateStaffContact(input: Omit<ContentContact, 'updatedAt'>): Promise<ContentContact> {
   const response = await apiFetch('/v1/staff/content/contact', { method: 'PUT', body: JSON.stringify(input) })
-  const content = await jsonResponse<Partial<ContentContact> & { phone?: string }>(response, 'Contact details could not be saved.')
-  return normalizeContactContent(content)
+  const payload = await jsonResponse<(Partial<ContentContact> & { phone?: string }) | { data: Partial<ContentContact> & { phone?: string } }>(response, 'Contact details could not be saved.')
+  return normalizeContactContent(unwrapData(payload))
 }
 
 export async function updateStaffFooter(input: Omit<ContentFooter, 'updatedAt'>): Promise<ContentFooter> {
   const response = await apiFetch('/v1/staff/content/footer', { method: 'PUT', body: JSON.stringify(input) })
-  return jsonResponse<ContentFooter>(response, 'Footer content could not be saved.')
+  const payload = await jsonResponse<ContentFooter | { data: ContentFooter }>(response, 'Footer content could not be saved.')
+  return unwrapData(payload)
 }
 
 export async function submitContactMessage(input: ContactMessageInput): Promise<{ requestId?: string }> {

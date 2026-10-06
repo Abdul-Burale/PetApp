@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
+import { Clock3, Mail, MapPin, Phone } from 'lucide-react'
 import { getContentPage, getSiteContent, submitContactMessage, type ContentPage } from '../lib/api'
 
 const slugs = ['contact', 'delivery', 'returns', 'faqs', 'our-story', 'guides', 'privacy', 'terms'] as const
@@ -17,17 +18,26 @@ const fallbackPages: Record<PageSlug, ContentPage> = {
   terms: { slug: 'terms', title: 'Terms and Conditions', intro: '', sections: [], version: 0, updatedAt: '' },
 }
 
-function ContentSection({ page }: { page: ContentPage }) {
-  return <>
-    {page.sections.map((section, index) => <section key={`${section.heading}-${index}`} className="border-b border-line py-7 last:border-0">
-      <h2 className="text-xl font-bold">{section.heading}</h2>
-      <p className="mt-3 whitespace-pre-line leading-7 text-gray-700">{section.body}</p>
-      {section.bullets?.length > 0 && <ul className="mt-3 list-disc space-y-2 pl-6 leading-7 text-gray-700">{section.bullets.map((bullet, itemIndex) => <li key={itemIndex}>{bullet}</li>)}</ul>}
-    </section>)}
-    {page.faqs?.map((faq, index) => <details key={`${faq.question}-${index}`} className="border-b border-line py-4">
-      <summary className="cursor-pointer font-bold">{faq.question}</summary><p className="mt-3 whitespace-pre-line leading-7 text-gray-700">{faq.answer}</p>
+const pageGroups = {
+  Help: [['contact', 'Contact Us'], ['delivery', 'Delivery'], ['returns', 'Returns'], ['faqs', 'FAQs']],
+  About: [['our-story', 'Our Story'], ['guides', 'Pet Care Guides'], ['privacy', 'Privacy Policy'], ['terms', 'Terms']],
+} as const
+
+function ContentSections({ page, slug }: { page: ContentPage; slug: PageSlug }) {
+  const isLegal = slug === 'privacy' || slug === 'terms'
+  const isGuideList = slug === 'guides'
+  return <div className={slug === 'delivery' || slug === 'returns' || slug === 'our-story' ? 'grid gap-4 sm:grid-cols-2' : 'space-y-4'}>
+    {page.sections.map((section, index) => <article id={`section-${index + 1}`} key={`${section.heading}-${index}`} className={`scroll-mt-8 rounded-lg border border-line bg-white p-5 sm:p-6 ${isLegal ? 'border-l-4 border-l-brand' : ''}`}>
+      <div className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sand text-xs font-bold text-brand">{String(index + 1).padStart(2, '0')}</span><h2 className="pt-1 text-lg font-bold">{section.heading}</h2></div>
+      {section.body && <p className="mt-4 whitespace-pre-line leading-7 text-gray-700">{section.body}</p>}
+      {section.bullets?.length > 0 && <ul className="mt-4 space-y-2 text-sm leading-6 text-gray-700">{section.bullets.map((bullet, itemIndex) => <li key={itemIndex} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"/><span>{bullet}</span></li>)}</ul>}
+      {isGuideList && <p className="mt-4 text-xs font-bold uppercase tracking-wider text-brand">Pet care guide</p>}
+    </article>)}
+    {page.faqs?.map((faq, index) => <details id={`faq-${index + 1}`} key={`${faq.question}-${index}`} className="group scroll-mt-8 rounded-lg border border-line bg-white p-5 sm:p-6">
+      <summary className="cursor-pointer list-none pr-8 font-bold marker:hidden after:float-right after:-mr-8 after:text-xl after:font-normal after:text-brand after:content-['+'] group-open:after:content-['−']">{faq.question}</summary><p className="mt-4 whitespace-pre-line border-t border-line pt-4 leading-7 text-gray-700">{faq.answer}</p>
     </details>)}
-  </>
+    {!page.sections.length && !page.faqs?.length && <div className="rounded-lg border border-dashed border-line bg-white p-8 text-center"><h2 className="font-bold">This page is being prepared</h2><p className="mt-2 text-sm leading-6 text-gray-600">Store information will appear here once it has been published.</p></div>}
+  </div>
 }
 
 function ContactForm() {
@@ -69,17 +79,25 @@ export function ContentPageView() {
   const contact = siteQuery.data?.contact ?? { email: '', phones: [], address: { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' }, openingHours: '', responseTime: '' }
   const addressLines = [contact.address.line1, contact.address.line2, [contact.address.townCity, contact.address.county].filter(Boolean).join(', '), contact.address.postcode, contact.address.country].filter(Boolean)
   const hasContactDetails = Boolean(contact.email || contact.phones.length || addressLines.length || contact.openingHours || contact.responseTime)
-  return <main className="container-page max-w-4xl py-12 sm:py-16">
-    <div className="mb-8"><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">My Pet Food</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{page.title}</h1><p className="mt-4 max-w-3xl whitespace-pre-line text-lg leading-8 text-gray-700">{page.intro}</p></div>
-    {pageQuery.isError && <p className="mb-5 text-sm text-gray-500">Showing the available page information; the latest content could not be loaded.</p>}
-    {slug === 'contact' && siteQuery.isError && <p role="alert" className="mb-5 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Contact details could not be loaded right now. Please refresh this page later.</p>}
-    {slug === 'contact' && <>{hasContactDetails && <div className="grid gap-4 rounded border border-line p-5 sm:grid-cols-2 sm:p-7">
-      {contact.email && <div><h2 className="font-bold">Email</h2><a className="mt-1 inline-block text-brand underline" href={`mailto:${contact.email}`}>{contact.email}</a></div>}
-      {contact.phones.map((phone, index) => <div key={`${phone.label}-${index}`}><h2 className="font-bold">{phone.label || 'Phone'}</h2><a className="mt-1 inline-block text-brand underline" href={`tel:${phone.number.replace(/[^+\d]/g, '')}`}>{phone.number}</a></div>)}
-      {addressLines.length > 0 && <div><h2 className="font-bold">Address</h2><address className="mt-1 whitespace-pre-line not-italic leading-6 text-gray-700">{addressLines.join('\n')}</address></div>}
-      {contact.openingHours && <div><h2 className="font-bold">Opening hours</h2><p className="mt-1 text-gray-700">{contact.openingHours}</p></div>}
-      {contact.responseTime && <div><h2 className="font-bold">Response time</h2><p className="mt-1 text-gray-700">{contact.responseTime}</p></div>}
-    </div>}<ContactForm /></>}
-    <ContentSection page={page} />
+  const groupName = pageGroups.Help.some(([pageSlug]) => pageSlug === slug) ? 'Help' : 'About'
+  const relatedPages = pageGroups[groupName]
+  const anchors = [...page.sections.map((section, index) => ({ label: section.heading, id: `section-${index + 1}` })), ...(page.faqs ?? []).map((faq, index) => ({ label: faq.question, id: `faq-${index + 1}` }))]
+  return <main className="container-page max-w-6xl py-8 sm:py-12">
+    <nav aria-label="Breadcrumb" className="mb-5 text-sm text-gray-500"><Link to="/" className="hover:text-brand">Home</Link><span className="mx-2">/</span><span>{groupName}</span><span className="mx-2">/</span><span className="text-ink">{page.title}</span></nav>
+    <header className="overflow-hidden rounded-xl bg-sand px-6 py-8 sm:px-10 sm:py-12"><p className="text-xs font-bold uppercase tracking-[.18em] text-brand">{groupName} · My Pet Food</p><h1 className="mt-3 max-w-3xl text-3xl font-bold tracking-tight text-ink sm:text-4xl">{page.title}</h1>{page.intro && <p className="mt-4 max-w-3xl whitespace-pre-line text-base leading-7 text-gray-700 sm:text-lg">{page.intro}</p>}</header>
+    {pageQuery.isError && <p role="alert" className="mt-5 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">The latest page content could not be loaded. Showing any available saved content.</p>}
+    {slug === 'contact' && siteQuery.isError && <p role="alert" className="mt-5 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Contact details could not be loaded right now. Please refresh this page later.</p>}
+    <div className="mt-7 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="min-w-0 space-y-8">
+        {slug === 'contact' && <section aria-label="Contact details"><div className="mb-4"><p className="text-xs font-bold uppercase tracking-wider text-accent">Get in touch</p><h2 className="mt-1 text-2xl font-bold">How can we help?</h2></div>{hasContactDetails ? <div className="grid gap-3 sm:grid-cols-2">{contact.email && <article className="rounded-lg border border-line bg-white p-5"><Mail className="text-brand" size={20}/><h3 className="mt-3 font-bold">Email</h3><a className="mt-1 break-all text-sm text-brand underline" href={`mailto:${contact.email}`}>{contact.email}</a></article>}{contact.phones.map((phone, index) => <article key={`${phone.label}-${index}`} className="rounded-lg border border-line bg-white p-5"><Phone className="text-brand" size={20}/><h3 className="mt-3 font-bold">{phone.label || 'Phone'}</h3><a className="mt-1 inline-block text-sm text-brand underline" href={`tel:${phone.number.replace(/[^+\d]/g, '')}`}>{phone.number}</a></article>)}{addressLines.length > 0 && <article className="rounded-lg border border-line bg-white p-5"><MapPin className="text-brand" size={20}/><h3 className="mt-3 font-bold">Address</h3><address className="mt-1 whitespace-pre-line text-sm not-italic leading-6 text-gray-700">{addressLines.join('\n')}</address></article>}{contact.openingHours && <article className="rounded-lg border border-line bg-white p-5"><Clock3 className="text-brand" size={20}/><h3 className="mt-3 font-bold">Opening hours</h3><p className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-700">{contact.openingHours}</p></article>}{contact.responseTime && <article className="rounded-lg border border-line bg-white p-5"><Clock3 className="text-brand" size={20}/><h3 className="mt-3 font-bold">Response time</h3><p className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-700">{contact.responseTime}</p></article>}</div> : <p className="rounded-lg border border-dashed border-line bg-white p-6 text-sm text-gray-600">Contact details are being added.</p>}</section>}
+        {(page.sections.length > 0 || (page.faqs?.length ?? 0) > 0) && <section><div className="mb-4"><p className="text-xs font-bold uppercase tracking-wider text-accent">{slug === 'faqs' ? 'Answers' : slug === 'guides' ? 'Learn and care' : 'More information'}</p><h2 className="mt-1 text-2xl font-bold">{slug === 'faqs' ? 'Frequently asked questions' : slug === 'guides' ? 'Pet care guides' : page.title}</h2></div><ContentSections page={page} slug={slug}/></section>}
+        {slug === 'contact' && <ContactForm />}
+        {page.sections.length === 0 && !(page.faqs?.length) && slug !== 'contact' && <ContentSections page={page} slug={slug}/>}
+      </div>
+      <aside className="space-y-4 lg:sticky lg:top-6">{anchors.length > 0 && <nav aria-label="On this page" className="rounded-lg border border-line bg-white p-5"><h2 className="font-bold">On this page</h2><ul className="mt-3 space-y-2">{anchors.map(anchor => <li key={anchor.id}><a href={`#${anchor.id}`} className="text-sm leading-5 text-gray-600 hover:text-brand">{anchor.label}</a></li>)}</ul></nav>}
+        <nav aria-label={`${groupName} pages`} className="rounded-lg border border-line bg-white p-5"><h2 className="font-bold">Explore {groupName}</h2><ul className="mt-3 space-y-1">{relatedPages.map(([pageSlug, label]) => <li key={pageSlug}><Link to={`/${pageSlug}`} aria-current={slug === pageSlug ? 'page' : undefined} className={`block rounded px-3 py-2 text-sm ${slug === pageSlug ? 'bg-sand font-bold text-brand' : 'text-gray-600 hover:bg-sand hover:text-brand'}`}>{label}</Link></li>)}</ul></nav>
+        {slug !== 'contact' && <div className="rounded-lg bg-brand p-5 text-white"><h2 className="font-bold">Need a hand?</h2><p className="mt-2 text-sm leading-6 text-white/80">Our team can help with questions about your order or your pet.</p><Link to="/contact" className="mt-4 inline-flex rounded bg-white px-4 py-2 text-sm font-bold text-brand hover:bg-sand">Contact us</Link></div>}
+      </aside>
+    </div>
   </main>
 }

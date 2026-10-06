@@ -66,13 +66,17 @@ export function ContentPageView() {
   const siteQuery = useQuery({ queryKey: ['site-content'], queryFn: getSiteContent, retry: false })
   if (!slug) return <main className="container-page py-16"><h1 className="section-title">Page not found</h1><Link className="mt-4 inline-block text-brand underline" to="/">Return to home</Link></main>
   const page = pageQuery.data ?? fallbackPages[slug]
-  const contact = siteQuery.data?.contact ?? { email: '', phone: '', openingHours: '', responseTime: '' }
+  const contact = siteQuery.data?.contact ?? { email: '', phones: [], address: { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' }, openingHours: '', responseTime: '' }
+  const addressLines = [contact.address.line1, contact.address.line2, [contact.address.townCity, contact.address.county].filter(Boolean).join(', '), contact.address.postcode, contact.address.country].filter(Boolean)
+  const hasContactDetails = Boolean(contact.email || contact.phones.length || addressLines.length || contact.openingHours || contact.responseTime)
   return <main className="container-page max-w-4xl py-12 sm:py-16">
     <div className="mb-8"><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">My Pet Food</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{page.title}</h1><p className="mt-4 max-w-3xl whitespace-pre-line text-lg leading-8 text-gray-700">{page.intro}</p></div>
     {pageQuery.isError && <p className="mb-5 text-sm text-gray-500">Showing the available page information; the latest content could not be loaded.</p>}
-    {slug === 'contact' && <>{Object.values(contact).some(Boolean) && <div className="grid gap-4 rounded border border-line p-5 sm:grid-cols-2 sm:p-7">
+    {slug === 'contact' && siteQuery.isError && <p role="alert" className="mb-5 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Contact details could not be loaded right now. Please refresh this page later.</p>}
+    {slug === 'contact' && <>{hasContactDetails && <div className="grid gap-4 rounded border border-line p-5 sm:grid-cols-2 sm:p-7">
       {contact.email && <div><h2 className="font-bold">Email</h2><a className="mt-1 inline-block text-brand underline" href={`mailto:${contact.email}`}>{contact.email}</a></div>}
-      {contact.phone && <div><h2 className="font-bold">Phone</h2><a className="mt-1 inline-block text-brand underline" href={`tel:${contact.phone.replace(/[^+\d]/g, '')}`}>{contact.phone}</a></div>}
+      {contact.phones.map((phone, index) => <div key={`${phone.label}-${index}`}><h2 className="font-bold">{phone.label || 'Phone'}</h2><a className="mt-1 inline-block text-brand underline" href={`tel:${phone.number.replace(/[^+\d]/g, '')}`}>{phone.number}</a></div>)}
+      {addressLines.length > 0 && <div><h2 className="font-bold">Address</h2><address className="mt-1 whitespace-pre-line not-italic leading-6 text-gray-700">{addressLines.join('\n')}</address></div>}
       {contact.openingHours && <div><h2 className="font-bold">Opening hours</h2><p className="mt-1 text-gray-700">{contact.openingHours}</p></div>}
       {contact.responseTime && <div><h2 className="font-bold">Response time</h2><p className="mt-1 text-gray-700">{contact.responseTime}</p></div>}
     </div>}<ContactForm /></>}

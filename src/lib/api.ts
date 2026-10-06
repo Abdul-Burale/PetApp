@@ -100,7 +100,15 @@ export interface ProductImageUploadAuthorization {
 }
 
 export interface SiteContent {
-  contact: { email: string; phone: string; openingHours: string; responseTime: string; version: number; updatedAt: string }
+  contact: {
+    email: string
+    phones: Array<{ label: string; number: string }>
+    address: { line1: string; line2: string; townCity: string; county: string; postcode: string; country: string }
+    openingHours: string
+    responseTime: string
+    version: number
+    updatedAt: string
+  }
   footer: { tagline: string; groups: Array<{ title: string; links: Array<{ label: string; route: string; active: boolean }> }>; version: number; updatedAt: string }
 }
 
@@ -280,9 +288,22 @@ export async function requestProductImageUpload(input: { fileName: string; conte
   return jsonResponse<ProductImageUploadAuthorization>(response, 'The image upload could not be authorised.')
 }
 
+function normalizeContactContent(contact: Partial<SiteContent['contact']> & { phone?: string }): SiteContent['contact'] {
+  return {
+    email: contact.email ?? '',
+    phones: contact.phones ?? (contact.phone ? [{ label: 'Phone', number: contact.phone }] : []),
+    address: contact.address ?? { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' },
+    openingHours: contact.openingHours ?? '',
+    responseTime: contact.responseTime ?? '',
+    version: contact.version ?? 0,
+    updatedAt: contact.updatedAt ?? '',
+  }
+}
+
 export async function getSiteContent(): Promise<SiteContent> {
   const response = await publicFetch('/v1/content/site')
-  return jsonResponse<SiteContent>(response, 'Store information could not be loaded.')
+  const content = await jsonResponse<Omit<SiteContent, 'contact'> & { contact: Partial<SiteContent['contact']> & { phone?: string } }>(response, 'Store information could not be loaded.')
+  return { ...content, contact: normalizeContactContent(content.contact) }
 }
 
 export async function getContentPage(slug: string): Promise<ContentPage> {
@@ -302,7 +323,8 @@ export async function updateStaffContentPage(slug: string, input: EditableConten
 
 export async function updateStaffContact(input: Omit<ContentContact, 'updatedAt'>): Promise<ContentContact> {
   const response = await apiFetch('/v1/staff/content/contact', { method: 'PUT', body: JSON.stringify(input) })
-  return jsonResponse<ContentContact>(response, 'Contact details could not be saved.')
+  const content = await jsonResponse<Partial<ContentContact> & { phone?: string }>(response, 'Contact details could not be saved.')
+  return normalizeContactContent(content)
 }
 
 export async function updateStaffFooter(input: Omit<ContentFooter, 'updatedAt'>): Promise<ContentFooter> {

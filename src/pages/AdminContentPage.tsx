@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { BackendApiError, getSiteContent, getStaffContentPage, updateStaffContact, updateStaffFooter, updateStaffContentPage, type ContentPage, type EditableContentPage, type SiteContent } from '../lib/api'
 
 const pages = [
@@ -13,10 +13,12 @@ type Section = EditableContentPage['sections'][number]
 type FAQ = NonNullable<EditableContentPage['faqs']>[number]
 type FooterContent = SiteContent['footer']
 type ContactContent = SiteContent['contact']
+type ContactDraft = Omit<ContactContent, 'updatedAt'>
 
 const blankSection = (): Section => ({ heading: '', body: '', bullets: [] })
 const blankFAQ = (): FAQ => ({ question: '', answer: '' })
 const footerRoutes = ['/', '/shop', '/shop?offer=true', '/category/cats', '/category/dogs', '/category/birds', ...pages.map(([slug]) => `/${slug}`)]
+const validUkPhone = (phone: string) => /^(?:0[1-9]\d{9}|\+44[1-9]\d{9})$/.test(phone.replace(/[\s()-]/g, ''))
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return <label className="block text-sm font-semibold"><span>{label}</span>{children}{hint && <span className="mt-1 block text-xs font-normal text-gray-500">{hint}</span>}</label>
@@ -40,18 +42,26 @@ function ConflictNotice({ version, latest, onUseLatest }: { version: number; lat
 }
 
 export function AdminContentPage() {
-  const [selection, setSelection] = useState<Selection>('delivery')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [selection, setSelection] = useState<Selection>(() => searchParams.get('section') === 'storefront' ? searchParams.get('store') === 'footer' ? 'footer-settings' : 'contact-settings' : pages.some(([slug]) => slug === searchParams.get('page')) ? searchParams.get('page') as PageSlug : 'delivery')
   const siteQuery = useQuery({ queryKey: ['site-content'], queryFn: getSiteContent, retry: false })
   const pageQuery = useQuery({ queryKey: ['staff-content-page', selection], queryFn: () => getStaffContentPage(selection as PageSlug), enabled: !['contact-settings', 'footer-settings'].includes(selection), retry: false })
   const queryClient = useQueryClient()
   const [pageDraft, setPageDraft] = useState<EditableContentPage>({ title: '', intro: '', sections: [], faqs: [] })
   const [pageVersion, setPageVersion] = useState(0)
-  const [contactDraft, setContactDraft] = useState<Omit<ContactContent, 'updatedAt'>>({ email: '', phone: '', openingHours: '', responseTime: '', version: 0 })
+  const [contactDraft, setContactDraft] = useState<ContactDraft>({ email: '', phones: [], address: { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' }, openingHours: '', responseTime: '', version: 0 })
   const [footerDraft, setFooterDraft] = useState<Omit<FooterContent, 'updatedAt'>>({ tagline: '', groups: [], version: 0 })
   const [conflict, setConflict] = useState<{ version: number; latest: unknown; resource: Selection } | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const requestedPage = searchParams.get('page')
+    if (searchParams.get('section') === 'storefront') setSelection(searchParams.get('store') === 'footer' ? 'footer-settings' : 'contact-settings')
+    else if (pages.some(([slug]) => slug === requestedPage)) setSelection(requestedPage as PageSlug)
+    else setSelection('delivery')
+  }, [searchParams])
 
   useEffect(() => {
     const value = pageQuery.data
@@ -64,7 +74,7 @@ export function AdminContentPage() {
   useEffect(() => {
     const value = siteQuery.data
     if (!value) return
-    setContactDraft({ email: value.contact.email, phone: value.contact.phone, openingHours: value.contact.openingHours, responseTime: value.contact.responseTime, version: value.contact.version })
+    setContactDraft({ email: value.contact.email, phones: value.contact.phones ?? [], address: value.contact.address ?? { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' }, openingHours: value.contact.openingHours, responseTime: value.contact.responseTime, version: value.contact.version })
     setFooterDraft({ tagline: value.footer.tagline, groups: value.footer.groups.map(group => ({ ...group, links: group.links.map(link => ({ ...link })) })), version: value.footer.version })
   }, [siteQuery.data])
 
@@ -74,14 +84,23 @@ export function AdminContentPage() {
   }
 
   async function save(event: FormEvent) {
-    event.preventDefault(); setSaving(true); setError(''); setMessage('')
+    event.preventDefault(); setError(''); setMessage('')
+    if (selection === 'contact-settings' && contactDraft.phones.some(phone => !validUkPhone(phone.number))) {
+      setError('Check each UK phone number. Enter 11 digits starting with 01–09, or +44 followed by 10 digits.')
+      return
+    }
+    setSaving(true)
     try {
       if (selection === 'contact-settings') {
         const saved = await updateStaffContact(contactDraft)
-        setContactDraft({ email: saved.email, phone: saved.phone, openingHours: saved.openingHours, responseTime: saved.responseTime, version: saved.version }); await queryClient.invalidateQueries({ queryKey: ['site-content'] })
+        setContactDraft({ email: saved.email, phones: saved.phones ?? [], address: saved.address, openingHours: saved.openingHours, responseTime: saved.responseTime, version: saved.version })
+        queryClient.setQueryData<SiteContent>(['site-content'], current => current ? { ...current, contact: saved } : current)
+        await queryClient.invalidateQueries({ queryKey: ['site-content'], refetchType: 'all' })
       } else if (selection === 'footer-settings') {
         const saved = await updateStaffFooter(footerDraft)
-        setFooterDraft({ tagline: saved.tagline, groups: saved.groups, version: saved.version }); await queryClient.invalidateQueries({ queryKey: ['site-content'] })
+        setFooterDraft({ tagline: saved.tagline, groups: saved.groups, version: saved.version })
+        queryClient.setQueryData<SiteContent>(['site-content'], current => current ? { ...current, footer: saved } : current)
+        await queryClient.invalidateQueries({ queryKey: ['site-content'], refetchType: 'all' })
       } else {
         const input: EditableContentPage & { version: number } = {
           title: pageDraft.title,
@@ -119,7 +138,7 @@ export function AdminContentPage() {
     if (!conflict) return
     if (conflict.resource === 'contact-settings') {
       const latest = conflict.latest as ContactContent
-      setContactDraft({ email: latest.email, phone: latest.phone, openingHours: latest.openingHours, responseTime: latest.responseTime, version: latest.version })
+      setContactDraft({ email: latest.email, phones: latest.phones, address: latest.address, openingHours: latest.openingHours, responseTime: latest.responseTime, version: latest.version })
     } else if (conflict.resource === 'footer-settings') {
       const latest = conflict.latest as FooterContent
       setFooterDraft({ tagline: latest.tagline, groups: latest.groups, version: latest.version })
@@ -150,7 +169,7 @@ export function AdminContentPage() {
     <div className="mt-5"><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">Admin tools</p><h1 className="mt-2 text-3xl font-bold sm:text-4xl">Store content</h1><p className="mt-3 text-gray-600">Edit storefront pages and shared details. Saved changes go live immediately.</p></div>
     <div className="mt-8 grid gap-6 lg:grid-cols-[240px_1fr]">
       <nav aria-label="Content selector" className="h-fit border border-line bg-white p-4">
-        <label className="block text-sm font-bold">Choose content<select value={selection} onChange={event => { setSelection(event.target.value as Selection); setConflict(null); setMessage(''); setError('') }} className="mt-2 w-full border border-line bg-white px-3 py-2.5 font-normal">
+        <label className="block text-sm font-bold">Choose content<select value={selection} onChange={event => { const next = event.target.value as Selection; setSelection(next); setSearchParams(next === 'contact-settings' || next === 'footer-settings' ? { section: 'storefront', store: next === 'footer-settings' ? 'footer' : 'contact' } : { section: 'pages', page: next }); setConflict(null); setMessage(''); setError('') }} className="mt-2 w-full border border-line bg-white px-3 py-2.5 font-normal">
           <optgroup label="Pages">{pages.map(([slug, title]) => <option key={slug} value={slug}>{title}</option>)}</optgroup><optgroup label="Shared storefront"><option value="contact-settings">Contact details</option><option value="footer-settings">Footer</option></optgroup>
         </select></label>
         <Link to="/account" className="mt-5 inline-block text-sm text-brand underline">Back to account</Link>
@@ -183,10 +202,15 @@ export function AdminContentPage() {
   </main>
 }
 
-function ContactEditor({ value, onChange }: { value: Omit<ContactContent, 'updatedAt'>; onChange: (value: Omit<ContactContent, 'updatedAt'>) => void }) {
+function ContactEditor({ value, onChange }: { value: ContactDraft; onChange: (value: ContactDraft) => void }) {
+  const addressFields = [['line1', 'Address line 1'], ['line2', 'Address line 2'], ['townCity', 'Town or city'], ['county', 'County'], ['postcode', 'Postcode'], ['country', 'Country']] as const
   return <><div><h2 className="text-xl font-bold">Contact details</h2><p className="mt-1 text-xs text-gray-500">Version {value.version}</p></div>
     <Field label="Email"><TextInput type="email" maxLength={254} value={value.email} onChange={event => onChange({ ...value, email: event.target.value })} /></Field>
-    <Field label="Phone"><TextInput maxLength={40} value={value.phone} onChange={event => onChange({ ...value, phone: event.target.value })} /></Field>
+    <div className="space-y-3"><div className="flex items-center justify-between"><h3 className="font-bold">Phone numbers</h3><button type="button" disabled={value.phones.length >= 5} onClick={() => onChange({ ...value, phones: [...value.phones, { label: '', number: '' }] })} className="btn-secondary">Add phone</button></div>
+      {!value.phones.length && <p className="text-sm text-gray-600">No phone numbers added.</p>}
+      {value.phones.map((phone, index) => <div key={index} className="grid gap-3 border border-line bg-sand/40 p-4 sm:grid-cols-[1fr_1fr_auto]"><Field label="Label"><TextInput required maxLength={40} placeholder="Landline or Mobile" value={phone.label} onChange={event => onChange({ ...value, phones: value.phones.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) })} /></Field><Field label="Number" hint={phone.number && !validUkPhone(phone.number) ? 'Enter 11 digits starting with 01–09, or +44 followed by 10 digits.' : '11 digits starting with 01–09, or +44 followed by 10 digits. Spaces and hyphens are okay.'}><TextInput required type="tel" maxLength={40} aria-invalid={phone.number.length > 0 && !validUkPhone(phone.number)} value={phone.number} onChange={event => onChange({ ...value, phones: value.phones.map((item, itemIndex) => itemIndex === index ? { ...item, number: event.target.value } : item) })} /></Field><button type="button" onClick={() => onChange({ ...value, phones: value.phones.filter((_, itemIndex) => itemIndex !== index) })} className="self-end pb-2 text-sm text-red-700 underline">Remove</button></div>)}
+    </div>
+    <div className="space-y-3"><h3 className="font-bold">Postal address</h3><div className="grid gap-4 sm:grid-cols-2">{addressFields.map(([key, label]) => <Field key={key} label={label}><TextInput maxLength={160} value={value.address[key]} onChange={event => onChange({ ...value, address: { ...value.address, [key]: event.target.value } })} /></Field>)}</div></div>
     <Field label="Opening hours"><TextArea maxLength={1000} rows={3} value={value.openingHours} onChange={event => onChange({ ...value, openingHours: event.target.value })} /></Field>
     <Field label="Expected response time"><TextArea maxLength={500} rows={3} value={value.responseTime} onChange={event => onChange({ ...value, responseTime: event.target.value })} /></Field>
   </>

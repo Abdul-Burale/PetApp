@@ -101,6 +101,8 @@ export interface ProductImageUploadAuthorization {
 
 export interface SiteContent {
   contact: {
+    /** Read-only capability marker; never include this in PUT payloads. */
+    structuredContactSupported?: boolean
     email: string
     phones: Array<{ label: string; number: string }>
     address: { line1: string; line2: string; townCity: string; county: string; postcode: string; country: string }
@@ -137,7 +139,7 @@ export interface ContactMessageInput {
 }
 
 export class BackendApiError extends Error {
-  constructor(message: string, public readonly status?: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string | string[]>) {
+  constructor(message: string, public readonly status?: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string | string[]>, public readonly requestId?: string, public readonly retryAfter?: number) {
     super(message)
     this.name = 'BackendApiError'
   }
@@ -145,22 +147,25 @@ export class BackendApiError extends Error {
 
 function apiUrl(path: string) {
   const baseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, '')
-  if (!baseUrl) throw new BackendApiError('The account service is not configured. Set VITE_API_BASE_URL.')
+  if (!baseUrl) throw new BackendApiError('The store service is not configured. Set VITE_API_BASE_URL.')
   return `${baseUrl}${path}`
 }
 
 async function readError(response: Response, fallback: string) {
+  const requestId = response.headers.get('X-Request-Id') ?? undefined
+  const retryHeader = response.headers.get('Retry-After')
+  const retryAfter = retryHeader && /^\d+$/.test(retryHeader) ? Number(retryHeader) : undefined
   try {
-    const body = await response.json() as { error?: { code?: string; message?: string; fieldErrors?: Record<string, string | string[]> } }
+    const body = await response.json() as { error?: { code?: string; message?: string; fieldErrors?: Record<string, string | string[]>; requestId?: string } }
     if (body.error) {
       const message = response.status === 401 ? 'Your session has expired. Please sign in again.' : response.status === 403 ? 'You do not have permission to perform this action.' : response.status === 404 ? 'The requested resource could not be found.' : body.error.message ?? fallback
-      return new BackendApiError(message, response.status, body.error.code, body.error.fieldErrors)
+      return new BackendApiError(message, response.status, body.error.code, body.error.fieldErrors, body.error.requestId ?? requestId, retryAfter)
     }
   } catch {
     // The response was not the API's JSON error envelope.
   }
   const message = response.status === 401 ? 'Your session has expired. Please sign in again.' : response.status === 403 ? 'You do not have permission to perform this action.' : response.status === 404 ? 'The requested resource could not be found.' : fallback
-  return new BackendApiError(message, response.status)
+  return new BackendApiError(message, response.status, undefined, undefined, requestId, retryAfter)
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
@@ -290,6 +295,7 @@ export async function requestProductImageUpload(input: { fileName: string; conte
 
 function normalizeContactContent(contact: Partial<SiteContent['contact']> & { phone?: string }): SiteContent['contact'] {
   return {
+    structuredContactSupported: Array.isArray(contact.phones) && typeof contact.address === 'object' && contact.address !== null,
     email: contact.email ?? '',
     phones: contact.phones ?? (contact.phone ? [{ label: 'Phone', number: contact.phone }] : []),
     address: contact.address ?? { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' },
@@ -310,25 +316,37 @@ export async function getSiteContent(): Promise<SiteContent> {
 export async function getContentPage(slug: string): Promise<ContentPage> {
   const response = await publicFetch(`/v1/content/pages/${encodeURIComponent(slug)}`)
   const payload = await jsonResponse<ContentPage | { data: ContentPage }>(response, 'This page could not be loaded.')
-  return unwrapData(payload)
+  return validateContentPage(unwrapData(payload), slug)
 }
 
 export async function getStaffContentPage(slug: string): Promise<ContentPage> {
-  const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`)
+  const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`, { cache: 'no-store' })
   const payload = await jsonResponse<ContentPage | { data: ContentPage }>(response, 'The content page could not be loaded.')
-  return unwrapData(payload)
+  return validateContentPage(unwrapData(payload), slug)
 }
 
 export async function updateStaffContentPage(slug: string, input: EditableContentPage & { version: number }): Promise<ContentPage> {
-  const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`, { method: 'PUT', body: JSON.stringify(input) })
+  const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`, { method: 'PUT', body: JSON.stringify({ ...input, slug }) })
   const payload = await jsonResponse<ContentPage | { data: ContentPage }>(response, 'The content page could not be saved.')
-  return unwrapData(payload)
+  return validateContentPage(unwrapData(payload), slug)
+}
+
+function validateContentPage(page: ContentPage, slug: string): ContentPage {
+  if (!page || page.slug !== slug || !Number.isInteger(page.version) || page.version < 0 || !Array.isArray(page.sections) || typeof page.title !== 'string' || typeof page.intro !== 'string' || typeof page.updatedAt !== 'string'
+    || page.sections.some(section => !section || typeof section.heading !== 'string' || typeof section.body !== 'string' || !Array.isArray(section.bullets) || section.bullets.some(bullet => typeof bullet !== 'string'))
+    || (page.faqs != null && (!Array.isArray(page.faqs) || page.faqs.some(faq => !faq || typeof faq.question !== 'string' || typeof faq.answer !== 'string')))) {
+    throw new BackendApiError('The content service returned an unexpected page. Please contact support rather than overwriting it.')
+  }
+  return { ...page, faqs: page.faqs ?? [] }
 }
 
 export async function updateStaffContact(input: Omit<ContentContact, 'updatedAt'>): Promise<ContentContact> {
-  const response = await apiFetch('/v1/staff/content/contact', { method: 'PUT', body: JSON.stringify(input) })
+  const { structuredContactSupported: _capability, ...editable } = input
+  const response = await apiFetch('/v1/staff/content/contact', { method: 'PUT', body: JSON.stringify(editable) })
   const payload = await jsonResponse<(Partial<ContentContact> & { phone?: string }) | { data: Partial<ContentContact> & { phone?: string } }>(response, 'Contact details could not be saved.')
-  return normalizeContactContent(unwrapData(payload))
+  const saved = normalizeContactContent(unwrapData(payload))
+  if (!saved.structuredContactSupported) throw new BackendApiError('The server did not return labeled phones and address. Contact support to confirm the V6 backend deployment before trying again.')
+  return saved
 }
 
 export async function updateStaffFooter(input: Omit<ContentFooter, 'updatedAt'>): Promise<ContentFooter> {

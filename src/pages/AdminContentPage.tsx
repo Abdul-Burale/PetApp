@@ -1,227 +1,160 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BackendApiError, getSiteContent, getStaffContentPage, updateStaffContact, updateStaffFooter, updateStaffContentPage, type ContentPage, type EditableContentPage, type SiteContent } from '../lib/api'
+import { BackendApiError, getSiteContent, updateStaffContact, updateStaffFooter, type SiteContent } from '../lib/api'
+import { isPageSlug, pageBriefs, pageSlugs, plainTextError, validUkPhone, type PageSlug } from '../lib/contentPages'
+import { ContentError, ContentPageEditor, useDraftGuard } from './ContentPageEditor'
 
-const pages = [
-  ['contact', 'Contact'], ['delivery', 'Delivery'], ['returns', 'Returns'], ['faqs', 'FAQs'],
-  ['our-story', 'Our Story'], ['guides', 'Pet Care Guides'], ['privacy', 'Privacy Policy'], ['terms', 'Terms'],
-] as const
-type PageSlug = typeof pages[number][0]
+const pages = pageSlugs.map(slug => [slug, pageBriefs[slug].title] as const)
 type Selection = PageSlug | 'contact-settings' | 'footer-settings'
-type Section = EditableContentPage['sections'][number]
-type FAQ = NonNullable<EditableContentPage['faqs']>[number]
 type FooterContent = SiteContent['footer']
 type ContactContent = SiteContent['contact']
-type ContactDraft = Omit<ContactContent, 'updatedAt'>
-
-const blankSection = (): Section => ({ heading: '', body: '', bullets: [] })
-const blankFAQ = (): FAQ => ({ question: '', answer: '' })
-const sectionSuggestions: Partial<Record<PageSlug, string[]>> = {
-  contact: ['Before you contact us', 'Order enquiries'],
-  delivery: ['Delivery areas', 'Delivery charges', 'Free delivery', 'Dispatch and delivery times'],
-  returns: ['Returns summary', 'Exclusions', 'How to request a return'],
-  'our-story': ['Our story', 'Our values'],
-  guides: ['Dog care', 'Cat care', 'Bird care'],
-  privacy: ['Information we collect', 'How we use information', 'Your privacy choices'],
-  terms: ['Using our store', 'Orders and payment', 'Delivery and returns'],
-}
-const pageGuidance: Record<PageSlug, string> = {
-  contact: 'Add optional notes to sit alongside the shared contact details and enquiry form.',
-  delivery: 'Cover delivery areas, charges, free-delivery thresholds and dispatch times. Use one topic per section.',
-  returns: 'Explain the returns summary, exclusions and how customers request a return.',
-  faqs: 'Add questions and answers below. They appear as expandable items in this order.',
-  'our-story': 'Use a few short sections to tell customers about the business and its values.',
-  guides: 'Add one plain-text care guide per section. These appear as a simple ordered guide list.',
-  privacy: 'Organise the policy into readable topics. This editor accepts plain text only.',
-  terms: 'Organise the terms into readable topics. This editor accepts plain text only.',
-}
-const footerRoutes = ['/', '/shop', '/shop?offer=true', '/category/cats', '/category/dogs', '/category/birds', ...pages.map(([slug]) => `/${slug}`)]
-const validUkPhone = (phone: string) => /^(?:0[1-9]\d{9}|\+44[1-9]\d{9})$/.test(phone.replace(/[\s()-]/g, ''))
+type ContactDraft = Omit<ContactContent, 'updatedAt' | 'structuredContactSupported'>
+type FooterDraft = Omit<FooterContent, 'updatedAt'>
+const footerRoutes = ['/', '/shop', '/shop?offer=true', '/category/cats', '/category/dogs', '/category/birds', ...pageSlugs.map(slug => `/${slug}`)]
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
-  return <label className="block text-sm font-semibold"><span>{label}</span>{children}{hint && <span className="mt-1 block text-xs font-normal italic leading-5 text-gray-600">{hint}</span>}</label>
+  return <label className="block text-sm font-semibold"><span>{label}</span>{hint && <span className="mb-2 mt-1 block text-sm font-normal italic leading-6 text-gray-500">{hint}</span>}{children}</label>
 }
-
 function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`mt-1 w-full border border-line bg-white px-3 py-2.5 font-normal ${props.className ?? ''}`} />
+  return <input {...props} className={`mt-1 w-full rounded-lg border border-line bg-white px-4 py-3 font-normal focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand ${props.className ?? ''}`} />
 }
-
 function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`mt-1 w-full border border-line bg-white px-3 py-2.5 font-normal ${props.className ?? ''}`} />
+  return <textarea {...props} className={`mt-1 w-full rounded-lg border border-line bg-white px-4 py-3 font-normal focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand ${props.className ?? ''}`} />
 }
 
-function ConflictNotice({ version, latest, onUseLatest }: { version: number; latest: unknown; onUseLatest: () => void }) {
-  return <div className="mt-5 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-    <p className="font-bold">Someone saved a newer version while you were editing.</p>
-    <p className="mt-1">Review the latest saved content below. Your edits are still here. Choose whether to keep or replace them before saving again.</p>
-    <details className="mt-3"><summary className="cursor-pointer font-semibold">Review latest saved version {version}</summary><pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-white p-3 text-xs">{JSON.stringify(latest, null, 2)}</pre></details>
-    <div className="mt-3 flex flex-wrap gap-3"><button type="button" onClick={onUseLatest} className="btn-secondary">Keep my edits and use version {version}</button></div>
-  </div>
+function contactDraftFrom(value: ContactContent): ContactDraft {
+  return { email: value.email, phones: value.phones, address: value.address, openingHours: value.openingHours, responseTime: value.responseTime, version: value.version }
+}
+function footerDraftFrom(value: FooterContent): FooterDraft {
+  return { tagline: value.tagline, groups: value.groups, version: value.version }
 }
 
 export function AdminContentPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [selection, setSelection] = useState<Selection>(() => searchParams.get('section') === 'storefront' ? searchParams.get('store') === 'footer' ? 'footer-settings' : 'contact-settings' : pages.some(([slug]) => slug === searchParams.get('page')) ? searchParams.get('page') as PageSlug : 'delivery')
-  const siteQuery = useQuery({ queryKey: ['site-content'], queryFn: getSiteContent, retry: false })
-  const pageQuery = useQuery({ queryKey: ['staff-content-page', selection], queryFn: () => getStaffContentPage(selection as PageSlug), enabled: !['contact-settings', 'footer-settings'].includes(selection), retry: false })
-  const queryClient = useQueryClient()
-  const [pageDraft, setPageDraft] = useState<EditableContentPage>({ title: '', intro: '', sections: [], faqs: [] })
-  const [pageVersion, setPageVersion] = useState(0)
-  const [contactDraft, setContactDraft] = useState<ContactDraft>({ email: '', phones: [], address: { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' }, openingHours: '', responseTime: '', version: 0 })
-  const [footerDraft, setFooterDraft] = useState<Omit<FooterContent, 'updatedAt'>>({ tagline: '', groups: [], version: 0 })
-  const [conflict, setConflict] = useState<{ version: number; latest: unknown; resource: Selection } | null>(null)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    const requestedPage = searchParams.get('page')
-    if (searchParams.get('section') === 'storefront') setSelection(searchParams.get('store') === 'footer' ? 'footer-settings' : 'contact-settings')
-    else if (pages.some(([slug]) => slug === requestedPage)) setSelection(requestedPage as PageSlug)
-    else setSelection('delivery')
-  }, [searchParams])
-
-  useEffect(() => {
-    const value = pageQuery.data
-    if (!value || ['contact-settings', 'footer-settings'].includes(selection)) return
-    setPageDraft({ title: value.title, intro: value.intro, sections: value.sections ?? [], faqs: value.faqs ?? [] })
-    setPageVersion(value.version)
-    setConflict(null); setMessage(''); setError('')
-  }, [pageQuery.data, selection])
-
-  useEffect(() => {
-    const value = siteQuery.data
-    if (!value) return
-    setContactDraft({ email: value.contact.email, phones: value.contact.phones ?? [], address: value.contact.address ?? { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' }, openingHours: value.contact.openingHours, responseTime: value.contact.responseTime, version: value.contact.version })
-    setFooterDraft({ tagline: value.footer.tagline, groups: value.footer.groups.map(group => ({ ...group, links: group.links.map(link => ({ ...link })) })), version: value.footer.version })
-  }, [siteQuery.data])
-
-  async function loadLatestPage() {
-    const latest = await getStaffContentPage(selection as PageSlug)
-    setConflict({ version: latest.version, latest, resource: selection })
+  const [dirty, setDirty] = useState(false)
+  const requested = searchParams.get('page')
+  const invalidPage = searchParams.get('section') !== 'storefront' && requested !== null && !isPageSlug(requested)
+  const selection: Selection = searchParams.get('section') === 'storefront'
+    ? searchParams.get('store') === 'footer' ? 'footer-settings' : 'contact-settings'
+    : isPageSlug(requested) ? requested : 'delivery'
+  const select = (next: Selection) => {
+    if ((!invalidPage && next === selection) || (dirty && !window.confirm('You have unpublished changes. Discard them and open different content?'))) return
+    setDirty(false)
+    setSearchParams(next === 'contact-settings' || next === 'footer-settings'
+      ? { section: 'storefront', store: next === 'footer-settings' ? 'footer' : 'contact' }
+      : { section: 'pages', page: next })
   }
-
-  async function save(event: FormEvent) {
-    event.preventDefault(); setError(''); setMessage('')
-    if (selection === 'contact-settings' && contactDraft.phones.some(phone => !validUkPhone(phone.number))) {
-      setError('Check each UK phone number. Enter 11 digits starting with 01–09, or +44 followed by 10 digits.')
-      return
-    }
-    setSaving(true)
-    try {
-      if (selection === 'contact-settings') {
-        const saved = await updateStaffContact(contactDraft)
-        setContactDraft({ email: saved.email, phones: saved.phones ?? [], address: saved.address, openingHours: saved.openingHours, responseTime: saved.responseTime, version: saved.version })
-        queryClient.setQueryData<SiteContent>(['site-content'], current => current ? { ...current, contact: saved } : current)
-        await queryClient.invalidateQueries({ queryKey: ['site-content'], refetchType: 'all' })
-      } else if (selection === 'footer-settings') {
-        const saved = await updateStaffFooter(footerDraft)
-        setFooterDraft({ tagline: saved.tagline, groups: saved.groups, version: saved.version })
-        queryClient.setQueryData<SiteContent>(['site-content'], current => current ? { ...current, footer: saved } : current)
-        await queryClient.invalidateQueries({ queryKey: ['site-content'], refetchType: 'all' })
-      } else {
-        const input: EditableContentPage & { version: number } = {
-          title: pageDraft.title,
-          intro: pageDraft.intro,
-          sections: pageDraft.sections,
-          version: pageVersion,
-          ...(selection === 'faqs' ? { faqs: pageDraft.faqs ?? [] } : {}),
-        }
-        const saved = await updateStaffContentPage(selection, input)
-        setPageVersion(saved.version); setPageDraft({ title: saved.title, intro: saved.intro, sections: saved.sections, faqs: saved.faqs ?? [] })
-        queryClient.setQueryData<ContentPage>(['content-page', selection], saved)
-        await queryClient.invalidateQueries({ queryKey: ['content-page', selection] })
-      }
-      setConflict(null); setMessage('Changes saved and are live now.')
-    } catch (caught) {
-      if (caught instanceof BackendApiError && (caught.status === 409 || caught.code === 'VERSION_CONFLICT')) {
-        setError('A newer version was saved. Review it before choosing how to continue.')
-        if (selection === 'contact-settings' || selection === 'footer-settings') {
-          const latestSite = await getSiteContent()
-          const latest = selection === 'contact-settings' ? latestSite.contact : latestSite.footer
-          setConflict({ version: latest.version, latest, resource: selection })
-        } else await loadLatestPage()
-      } else setError(caught instanceof Error ? caught.message : 'The content could not be saved.')
-    } finally { setSaving(false) }
-  }
-
-  function acceptLatestVersion() {
-    if (!conflict) return
-    if (conflict.resource === 'contact-settings') setContactDraft(current => ({ ...current, version: conflict.version }))
-    else if (conflict.resource === 'footer-settings') setFooterDraft(current => ({ ...current, version: conflict.version }))
-    else setPageVersion(conflict.version)
-    setConflict(null); setError(''); setMessage('Your edits are unchanged. Saving now will replace the version you just reviewed.')
-  }
-
-  function replaceWithLatest() {
-    if (!conflict) return
-    if (conflict.resource === 'contact-settings') {
-      const latest = conflict.latest as ContactContent
-      setContactDraft({ email: latest.email, phones: latest.phones, address: latest.address, openingHours: latest.openingHours, responseTime: latest.responseTime, version: latest.version })
-    } else if (conflict.resource === 'footer-settings') {
-      const latest = conflict.latest as FooterContent
-      setFooterDraft({ tagline: latest.tagline, groups: latest.groups, version: latest.version })
-    } else {
-      const latest = conflict.latest as ContentPage
-      setPageDraft({ title: latest.title, intro: latest.intro, sections: latest.sections, faqs: latest.faqs ?? [] })
-      setPageVersion(latest.version)
-    }
-    setConflict(null); setError(''); setMessage('The latest saved version is loaded into the editor.')
-  }
-
-  const moveSection = (index: number, offset: number) => setPageDraft(current => {
-    const next = [...current.sections]; const target = index + offset
-    if (target < 0 || target >= next.length) return current
-    ;[next[index], next[target]] = [next[target], next[index]]
-    return { ...current, sections: next }
-  })
-
-  function updateSection(index: number, update: Partial<Section>) {
-    setPageDraft(current => ({ ...current, sections: current.sections.map((section, itemIndex) => itemIndex === index ? { ...section, ...update } : section) }))
-  }
-
-  const loading = selection === 'contact-settings' || selection === 'footer-settings' ? siteQuery.isLoading : pageQuery.isLoading
-  const loadError = selection === 'contact-settings' || selection === 'footer-settings' ? siteQuery.error : pageQuery.error
-  const nextSuggestedSection = sectionSuggestions[selection as PageSlug]?.find(heading => !pageDraft.sections.some(section => section.heading === heading))
-
-  return <main className="container-page max-w-5xl py-12 sm:py-16">
-    <p className="text-sm text-gray-500"><Link to="/account" className="underline">Account</Link> / Admin tools / Store content</p>
-    <div className="mt-5"><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">Admin tools</p><h1 className="mt-2 text-3xl font-bold sm:text-4xl">Store content</h1><p className="mt-3 text-gray-600">Edit storefront pages and shared details. Saved changes go live immediately.</p></div>
-    <div className="mt-8 grid gap-6 lg:grid-cols-[240px_1fr]">
-      <nav aria-label="Content selector" className="h-fit border border-line bg-white p-4">
-        <label className="block text-sm font-bold">Choose content<select value={selection} onChange={event => { const next = event.target.value as Selection; setSelection(next); setSearchParams(next === 'contact-settings' || next === 'footer-settings' ? { section: 'storefront', store: next === 'footer-settings' ? 'footer' : 'contact' } : { section: 'pages', page: next }); setConflict(null); setMessage(''); setError('') }} className="mt-2 w-full border border-line bg-white px-3 py-2.5 font-normal">
+  const backGuard = (event: React.MouseEvent) => { if (dirty && !window.confirm('Discard your unpublished changes and return to your account?')) event.preventDefault() }
+  return <main className="container-page max-w-7xl py-8 sm:py-12">
+    <p className="text-sm text-gray-500"><Link to="/account" onClick={backGuard} className="underline">Account</Link> / Admin tools / {isPageSlug(selection) ? 'Pages' : 'Storefront'}</p>
+    <header className="mt-6"><p className="text-xs font-bold uppercase tracking-[.18em] text-red-800">Staff workspace</p><h1 className="mt-2 text-3xl font-bold">{isPageSlug(selection) ? 'Pages' : 'Storefront'}</h1><p className="mt-3 max-w-2xl text-gray-600">Choose what to edit, fill in your approved information, then publish when you are ready.</p></header>
+    <div className="mt-8 grid items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
+      <nav aria-label="Content selector" className="rounded-xl border border-line bg-white p-5 lg:sticky lg:top-6">
+        <label className="block text-sm font-bold lg:hidden">Choose content<select className="mt-2 w-full rounded-lg border border-line p-3" value={selection} onChange={event => select(event.target.value as Selection)}>
           <optgroup label="Pages">{pages.map(([slug, title]) => <option key={slug} value={slug}>{title}</option>)}</optgroup><optgroup label="Shared storefront"><option value="contact-settings">Contact details</option><option value="footer-settings">Footer</option></optgroup>
         </select></label>
-        <Link to="/account" className="mt-5 inline-block text-sm text-brand underline">Back to account</Link>
+        <div className="hidden space-y-6 lg:block">{(['Help', 'About'] as const).map(group => <div key={group}><h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-500">{group}</h2><ul className="space-y-1">{pageSlugs.filter(slug => pageBriefs[slug].group === group).map(slug => <li key={slug}><button type="button" aria-current={selection === slug ? 'page' : undefined} onClick={() => select(slug)} className={`w-full rounded-lg px-3 py-2.5 text-left text-sm ${selection === slug ? 'bg-brand font-bold text-white' : 'text-gray-600 hover:bg-sand'}`}>{pageBriefs[slug].title}</button></li>)}</ul></div>)}
+          <div><h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-500">Shared storefront</h2>{(['contact-settings', 'footer-settings'] as const).map(resource => <button key={resource} type="button" onClick={() => select(resource)} aria-current={selection === resource ? 'page' : undefined} className={`block w-full rounded-lg px-3 py-2.5 text-left text-sm ${selection === resource ? 'bg-brand font-bold text-white' : 'text-gray-600 hover:bg-sand'}`}>{resource === 'contact-settings' ? 'Contact details' : 'Footer & links'}</button>)}</div>
+        </div>
+        <Link to="/account" onClick={backGuard} className="mt-6 inline-block text-sm text-brand underline">Back to admin tools</Link>
       </nav>
-      <section className="border border-line bg-white p-5 shadow-card sm:p-7">
-        {loading && <p className="text-sm text-gray-600">Loading saved content…</p>}
-        {loadError && !loading && <div role="alert" className="border border-red-200 bg-red-50 p-4 text-sm text-red-800">{loadError instanceof Error ? loadError.message : 'Content could not be loaded.'}</div>}
-        {!loading && !loadError && <form onSubmit={save} className="space-y-6">
-          {selection === 'contact-settings' ? <ContactEditor value={contactDraft} onChange={setContactDraft} /> : selection === 'footer-settings' ? <FooterEditor value={footerDraft} onChange={setFooterDraft} /> : <>
-            <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-sand/70 p-4"><div><h2 className="text-xl font-bold">{pages.find(([slug]) => slug === selection)?.[1]} page</h2><p className="mt-1 text-sm italic leading-6 text-gray-700">{pageGuidance[selection as PageSlug]}</p><p className="mt-2 text-xs text-gray-500">Version {pageVersion}{pageQuery.data?.updatedAt ? ` · Updated ${new Date(pageQuery.data.updatedAt).toLocaleString()}` : ''}</p></div><Link target="_blank" rel="noreferrer" to={`/${selection}`} className="text-sm font-semibold text-brand underline">Preview live page ↗</Link></div>
-            <Field label="Page title" hint="The main heading customers see at the top of the page."><TextInput required maxLength={200} placeholder="For example, Delivery" value={pageDraft.title} onChange={event => setPageDraft(current => ({ ...current, title: event.target.value }))} /></Field>
-            <Field label="Short introduction" hint="A brief opening paragraph. Keep it clear and customer friendly."><TextArea maxLength={2000} rows={3} placeholder="Summarise what customers will find on this page…" value={pageDraft.intro} onChange={event => setPageDraft(current => ({ ...current, intro: event.target.value }))} /></Field>
-            <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-bold">Page sections</h3><p className="mt-1 text-sm italic text-gray-600">Each section becomes its own block on the published page. Drag-free ordering is controlled with Move up/down.</p></div><div className="flex flex-wrap gap-2"><button type="button" disabled={pageDraft.sections.length >= 40} onClick={() => setPageDraft(current => ({ ...current, sections: [...current.sections, blankSection()] }))} className="btn-secondary">Add blank section</button>{nextSuggestedSection && <button type="button" disabled={pageDraft.sections.length >= 40} onClick={() => setPageDraft(current => ({ ...current, sections: [...current.sections, { ...blankSection(), heading: nextSuggestedSection }] }))} className="btn-secondary">Add suggested section</button>}</div></div>
-              {!pageDraft.sections.length && <p className="rounded-lg border border-dashed border-line bg-white p-5 text-sm italic leading-6 text-gray-600">No sections yet. Add a suggested section to get started, or create a blank one for a different topic.</p>}
-              {pageDraft.sections.map((section, index) => <fieldset key={index} className="space-y-4 rounded-lg border border-line bg-white p-4 shadow-sm sm:p-5"><legend className="rounded bg-brand px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">Section {index + 1}</legend>
-                <div className="flex flex-wrap items-center justify-end gap-3 border-b border-line pb-3"><button type="button" disabled={index === 0} onClick={() => moveSection(index, -1)} className="text-sm font-semibold text-brand underline disabled:opacity-40">Move up</button><button type="button" disabled={index === pageDraft.sections.length - 1} onClick={() => moveSection(index, 1)} className="text-sm font-semibold text-brand underline disabled:opacity-40">Move down</button><button type="button" onClick={() => setPageDraft(current => ({ ...current, sections: current.sections.filter((_, itemIndex) => itemIndex !== index) }))} className="text-sm font-semibold text-red-700 underline">Remove section</button></div>
-                <Field label="Section heading" hint="A short label that tells customers what this block is about."><TextInput required maxLength={160} placeholder="For example, Dispatch times" value={section.heading} onChange={event => updateSection(index, { heading: event.target.value })} /></Field>
-                <Field label="Paragraph" hint="Write in plain text. Line breaks are kept. Do not paste HTML."><TextArea maxLength={10000} rows={5} placeholder="Add the explanation customers need…" value={section.body} onChange={event => updateSection(index, { body: event.target.value })} /></Field>
-                <Field label="Optional bullet points" hint="Put one short point on each line. Leave blank if a paragraph is enough; up to 30 points."><TextArea rows={4} placeholder={'For example:\nStandard delivery options\nWhere we deliver'} value={section.bullets.join('\n')} onChange={event => updateSection(index, { bullets: event.target.value.split('\n').filter(line => line.trim()).slice(0, 30) })} /></Field>
-              </fieldset>)}
-            </div>
-            {selection === 'faqs' && <div className="space-y-4"><div className="flex items-center justify-between"><div><h3 className="text-lg font-bold">Questions and answers</h3><p className="mt-1 text-sm italic text-gray-600">Questions appear as expandable rows on the FAQs page, in the order shown here.</p></div><button type="button" disabled={(pageDraft.faqs?.length ?? 0) >= 100} onClick={() => setPageDraft(current => ({ ...current, faqs: [...(current.faqs ?? []), blankFAQ()] }))} className="btn-secondary">Add question</button></div>{!(pageDraft.faqs?.length) && <p className="rounded-lg border border-dashed border-line bg-white p-5 text-sm italic text-gray-600">No questions yet. Add one question and its answer to create the first accordion row.</p>}{(pageDraft.faqs ?? []).map((faq, index) => <fieldset key={index} className="space-y-3 rounded-lg border border-line bg-white p-4 shadow-sm"><legend className="rounded bg-brand px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">Question {index + 1}</legend><div className="flex justify-end gap-3"><button type="button" disabled={index === 0} onClick={() => setPageDraft(current => { const faqs = [...(current.faqs ?? [])]; [faqs[index - 1], faqs[index]] = [faqs[index], faqs[index - 1]]; return { ...current, faqs } })} className="text-sm text-brand underline disabled:opacity-40">Move up</button><button type="button" disabled={index === (pageDraft.faqs?.length ?? 0) - 1} onClick={() => setPageDraft(current => { const faqs = [...(current.faqs ?? [])]; [faqs[index + 1], faqs[index]] = [faqs[index], faqs[index + 1]]; return { ...current, faqs } })} className="text-sm text-brand underline disabled:opacity-40">Move down</button><button type="button" onClick={() => setPageDraft(current => ({ ...current, faqs: (current.faqs ?? []).filter((_, itemIndex) => itemIndex !== index) }))} className="text-sm text-red-700 underline">Remove</button></div><Field label="Question" hint="Write this as the customer would ask it."><TextInput required maxLength={200} placeholder="For example, How long does delivery take?" value={faq.question} onChange={event => setPageDraft(current => ({ ...current, faqs: (current.faqs ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, question: event.target.value } : item) }))} /></Field><Field label="Answer" hint="Give a clear, direct answer in plain text."><TextArea required maxLength={5000} rows={3} placeholder="Write the answer customers need…" value={faq.answer} onChange={event => setPageDraft(current => ({ ...current, faqs: (current.faqs ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, answer: event.target.value } : item) }))} /></Field></fieldset>)}</div>}
-          </>}
-          {error && <p role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-          {message && <p role="status" className="border border-green-200 bg-green-50 p-3 text-sm text-green-800">{message}</p>}
-          {conflict && <><ConflictNotice version={conflict.version} latest={conflict.latest} onUseLatest={acceptLatestVersion} /><button type="button" onClick={replaceWithLatest} className="text-sm font-semibold text-brand underline">Replace my edits with the latest saved version</button></>}
-          <div className="border-t border-line pt-5"><button className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save and publish'}</button></div>
-        </form>}
+      <section className="min-w-0 rounded-2xl border border-line bg-white shadow-card">
+        {invalidPage ? <div className="p-6"><ContentError error="This is not a supported system page. Choose a page from Help or About to open its editor." /></div> : isPageSlug(selection) ? <ContentPageEditor key={selection} slug={selection} onDirtyChange={setDirty} /> : <SharedContentEditor key={selection} resource={selection} onDirtyChange={setDirty} />}
       </section>
     </div>
   </main>
+}
+
+function SharedContentEditor({ resource, onDirtyChange }: { resource: 'contact-settings' | 'footer-settings'; onDirtyChange: (dirty: boolean) => void }) {
+  const query = useQuery({ queryKey: ['site-content'], queryFn: getSiteContent, retry: false, refetchOnWindowFocus: false })
+  if (query.isPending) return <p role="status" className="p-8">Loading shared content…</p>
+  if (query.isError) return <div className="space-y-4 p-6"><ContentError error={query.error} /><button className="btn-secondary" onClick={() => void query.refetch()}>Retry loading content</button></div>
+  return <LoadedSharedEditor initial={query.data} resource={resource} onDirtyChange={onDirtyChange} />
+}
+
+// Query refetches never reset a draft: it is initialized once per selected resource.
+function LoadedSharedEditor({ initial, resource, onDirtyChange }: { initial: SiteContent; resource: 'contact-settings' | 'footer-settings'; onDirtyChange: (dirty: boolean) => void }) {
+  const isContact = resource === 'contact-settings'
+  const queryClient = useQueryClient()
+  const [contact, setContact] = useState(() => contactDraftFrom(initial.contact))
+  const [footer, setFooter] = useState(() => footerDraftFrom(initial.footer))
+  const [baseline, setBaseline] = useState(() => JSON.stringify(isContact ? contactDraftFrom(initial.contact) : footerDraftFrom(initial.footer)))
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState<unknown>(null)
+  const [conflict, setConflict] = useState<SiteContent | null>(null)
+  const [conflictPending, setConflictPending] = useState(false)
+  const dirty = JSON.stringify(isContact ? contact : footer) !== baseline
+  useDraftGuard(dirty, onDirtyChange)
+  async function fetchLatest() {
+    try { setConflict(await getSiteContent()); setError(null) } catch (caught) { setError(caught) }
+  }
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    if (saving || conflictPending || (isContact && !initial.contact.structuredContactSupported)) return
+    setError(null); setMessage('')
+    if (isContact && contact.phones.some(phone => !phone.label.trim() || !validUkPhone(phone.number))) {
+      setError('Give every phone a label and a valid UK number: 11 digits starting 01–09, or +44 followed by 10 digits. Parentheses must be balanced.'); return
+    }
+    const strings = isContact ? [contact.email, ...contact.phones.flatMap(phone => [phone.label, phone.number]), ...Object.values(contact.address), contact.openingHours, contact.responseTime] : [footer.tagline, ...footer.groups.flatMap(group => [group.title, ...group.links.map(link => link.label)])]
+    const invalid = plainTextError(strings)
+    if (invalid) { setError(invalid); return }
+    setSaving(true)
+    try {
+      let publishedVersion: number
+      if (isContact) {
+        const result = await updateStaffContact(contact)
+        publishedVersion = result.version
+        const next = contactDraftFrom(result)
+        setContact(next); setBaseline(JSON.stringify(next))
+        queryClient.setQueryData<SiteContent>(['site-content'], current => current ? { ...current, contact: result } : current)
+      } else {
+        const result = await updateStaffFooter(footer)
+        publishedVersion = result.version
+        const next = footerDraftFrom(result)
+        setFooter(next); setBaseline(JSON.stringify(next))
+        queryClient.setQueryData<SiteContent>(['site-content'], current => current ? { ...current, footer: result } : current)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['site-content'], refetchType: 'none' })
+      try {
+        const publicSite = await getSiteContent()
+        queryClient.setQueryData(['site-content'], publicSite)
+        setMessage((isContact ? publicSite.contact.version : publicSite.footer.version) === publishedVersion
+          ? 'Saved and published. The shared storefront content has been checked and refreshed.'
+          : 'Your save succeeded, but the public storefront returned another version. Review the live page before making further changes.')
+      } catch {
+        setMessage('Your save succeeded, but the public storefront could not be checked. Do not resubmit; check the live page or contact support.')
+      }
+    } catch (caught) {
+      if (caught instanceof BackendApiError && (caught.status === 409 || caught.code === 'VERSION_CONFLICT')) {
+        setConflictPending(true); await fetchLatest()
+      } else setError(caught)
+    } finally { setSaving(false) }
+  }
+  const latestResource = conflict ? isContact ? conflict.contact : conflict.footer : null
+  return <form onSubmit={save} className="space-y-6 p-5 sm:p-8">
+    <p className="text-sm italic leading-6 text-gray-600">{isContact ? 'These details are shared with the Contact Us page and footer. Leave a field blank to hide it. Publish only real business information.' : 'Choose which navigation links customers see. Inactive links and empty groups are hidden; order is preserved.'}</p>
+    {isContact && !initial.contact.structuredContactSupported && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-5 text-sm leading-6">This backend still returns the old single-phone format. Publishing is disabled to avoid losing phone/address changes. Deploy the V6 contact migration and updated contact endpoints, then reload this editor.</div>}
+    <fieldset disabled={saving || (isContact && !initial.contact.structuredContactSupported)} className="space-y-6 disabled:opacity-60">
+      {isContact ? <ContactEditor value={contact} onChange={value => { setContact(value); setMessage('') }} /> : <FooterEditor value={footer} onChange={value => { setFooter(value); setMessage('') }} />}
+    </fieldset>
+    {error != null && <ContentError error={error} />}
+    {message && <p role="status" className="rounded-lg bg-sand p-4 text-sm leading-6 text-brand">{message}</p>}
+    {conflictPending && <section className="space-y-4 rounded-xl border border-amber-300 bg-amber-50 p-5"><h3 className="font-bold">Another staff member saved newer content</h3><p className="text-sm leading-6">Your draft is preserved. Compare the latest saved information before choosing whether to replace it.</p>
+      {latestResource ? <><details><summary className="cursor-pointer font-semibold">Review the latest saved content</summary><div className="mt-4 max-h-96 overflow-auto rounded bg-white p-4"><ContentSnapshot value={latestResource} /></div></details><div className="flex flex-wrap gap-3">
+        <button type="button" className="btn-secondary" onClick={() => { if (!conflict) return; const next = isContact ? contactDraftFrom(conflict.contact) : footerDraftFrom(conflict.footer); if (isContact) setContact(next as ContactDraft); else setFooter(next as FooterDraft); setBaseline(JSON.stringify(next)); setConflict(null); setConflictPending(false); setMessage('Latest saved content loaded.') }}>Use latest saved content</button>
+        <button type="button" className="btn-secondary" onClick={() => { if (isContact) setContact(current => ({ ...current, version: latestResource.version })); else setFooter(current => ({ ...current, version: latestResource.version })); setConflict(null); setConflictPending(false); setMessage('Your draft is kept. Review it, then explicitly save to publish.') }}>Keep my draft after comparison</button>
+      </div></> : <button type="button" className="btn-secondary" onClick={() => void fetchLatest()}>Load latest for comparison</button>}
+    </section>}
+    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6"><p className="text-sm text-gray-500">{dirty ? 'Unpublished changes' : 'No unpublished changes'}</p><button className="btn-primary" disabled={saving || conflictPending || (isContact && !initial.contact.structuredContactSupported)}>{saving ? 'Saving…' : 'Save and publish'}</button></div>
+  </form>
+}
+
+function ContentSnapshot({ value }: { value: unknown }) {
+  if (Array.isArray(value)) return <ol className="list-decimal space-y-3 pl-5">{value.map((entry, index) => <li key={index}><ContentSnapshot value={entry} /></li>)}</ol>
+  if (value && typeof value === 'object') return <dl className="space-y-3">{Object.entries(value).filter(([key]) => !['version', 'updatedAt', 'structuredContactSupported'].includes(key)).map(([key, entry]) => <div key={key}><dt className="text-xs font-bold uppercase tracking-wide text-gray-500">{key.replace(/([A-Z])/g, ' $1')}</dt><dd className="mt-1"><ContentSnapshot value={entry} /></dd></div>)}</dl>
+  return <span className="whitespace-pre-wrap break-words text-sm">{typeof value === 'boolean' ? value ? 'Visible' : 'Hidden' : String(value || 'Not supplied')}</span>
 }
 
 function ContactEditor({ value, onChange }: { value: ContactDraft; onChange: (value: ContactDraft) => void }) {

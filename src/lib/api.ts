@@ -99,6 +99,35 @@ export interface ProductImageUploadAuthorization {
   publicUrl: string
 }
 
+export interface SiteContent {
+  contact: { email: string; phone: string; openingHours: string; responseTime: string; version: number; updatedAt: string }
+  footer: { tagline: string; groups: Array<{ title: string; links: Array<{ label: string; route: string; active: boolean }> }>; version: number; updatedAt: string }
+}
+
+export interface ContentPage {
+  slug: string
+  title: string
+  intro: string
+  sections: Array<{ heading: string; body: string; bullets: string[] }>
+  faqs?: Array<{ question: string; answer: string }>
+  version: number
+  updatedAt: string
+}
+
+export type EditableContentPage = Pick<ContentPage, 'title' | 'intro' | 'sections' | 'faqs'>
+export type ContentContact = SiteContent['contact']
+export type ContentFooter = SiteContent['footer']
+
+export interface ContactMessageInput {
+  name: string
+  email: string
+  orderNumber: string | null
+  subject: string
+  message: string
+  consent: boolean
+  website?: string
+}
+
 export class BackendApiError extends Error {
   constructor(message: string, public readonly status?: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string | string[]>) {
     super(message)
@@ -249,4 +278,39 @@ export async function setProductActivation(id: string, active: boolean): Promise
 export async function requestProductImageUpload(input: { fileName: string; contentType: string; sizeBytes: number }): Promise<ProductImageUploadAuthorization> {
   const response = await apiFetch('/v1/staff/product-images/upload-url', { method: 'POST', body: JSON.stringify(input) })
   return jsonResponse<ProductImageUploadAuthorization>(response, 'The image upload could not be authorised.')
+}
+
+export async function getSiteContent(): Promise<SiteContent> {
+  const response = await publicFetch('/v1/content/site')
+  return jsonResponse<SiteContent>(response, 'Store information could not be loaded.')
+}
+
+export async function getContentPage(slug: string): Promise<ContentPage> {
+  const response = await publicFetch(`/v1/content/pages/${encodeURIComponent(slug)}`)
+  return jsonResponse<ContentPage>(response, 'This page could not be loaded.')
+}
+
+export async function getStaffContentPage(slug: string): Promise<ContentPage> {
+  const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`)
+  return jsonResponse<ContentPage>(response, 'The content page could not be loaded.')
+}
+
+export async function updateStaffContentPage(slug: string, input: EditableContentPage & { version: number }): Promise<ContentPage> {
+  const response = await apiFetch(`/v1/staff/content/pages/${encodeURIComponent(slug)}`, { method: 'PUT', body: JSON.stringify(input) })
+  return jsonResponse<ContentPage>(response, 'The content page could not be saved.')
+}
+
+export async function updateStaffContact(input: Omit<ContentContact, 'updatedAt'>): Promise<ContentContact> {
+  const response = await apiFetch('/v1/staff/content/contact', { method: 'PUT', body: JSON.stringify(input) })
+  return jsonResponse<ContentContact>(response, 'Contact details could not be saved.')
+}
+
+export async function updateStaffFooter(input: Omit<ContentFooter, 'updatedAt'>): Promise<ContentFooter> {
+  const response = await apiFetch('/v1/staff/content/footer', { method: 'PUT', body: JSON.stringify(input) })
+  return jsonResponse<ContentFooter>(response, 'Footer content could not be saved.')
+}
+
+export async function submitContactMessage(input: ContactMessageInput): Promise<{ requestId?: string }> {
+  const response = await publicFetch('/v1/contact-messages', { method: 'POST', body: JSON.stringify(input) })
+  return jsonResponse<{ requestId?: string }>(response, 'Your message could not be sent. Please try again.')
 }

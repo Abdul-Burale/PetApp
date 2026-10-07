@@ -1,32 +1,38 @@
 import { ArrowRight, BookOpen } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ProductGrid } from '../components/shop/ProductGrid'
+import { CatalogPagination, readCatalogNumber } from '../components/shop/CatalogPagination'
 import { useCatalog } from '../context/CatalogContext'
 import { getContentPage } from '../lib/api'
+import { catalogFilters, filterCatalog } from '../lib/catalog'
 
-const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1100&q=85`
-const petCards = [
-  { name: 'Cats', copy: 'Food, toys and cosy comforts for curious cats.', image: photo('photo-1514888286974-6c03e2ca1dba') },
-  { name: 'Dogs', copy: 'Everyday essentials for dogs of all sizes.', image: photo('photo-1558788353-f76d92427f16') },
-  { name: 'Birds', copy: 'Food, toys and care for your feathered companions.', image: photo('photo-1444464666168-49d633b86797') },
-]
 const excerpt = (text: string, length: number) => text.trim().length > length ? `${text.trim().slice(0, length).trimEnd()}…` : text.trim()
 
 export function HomePage() {
+  const [params, setParams] = useSearchParams()
   const { products, loading, error, refresh } = useCatalog()
   const story = useQuery({ queryKey: ['content-page', 'our-story'], queryFn: () => getContentPage('our-story'), retry: false })
   const guides = useQuery({ queryKey: ['content-page', 'guides'], queryFn: () => getContentPage('guides'), retry: false })
-  const available = products.filter(product => product.available)
-  const featured = available.filter(product => product.featured)
-  const highlights = (featured.length ? featured : available).slice(0, 8)
+  const listing = filterCatalog(products, catalogFilters(params))
+  const pageSize = readCatalogNumber(params.get('pageSize'), 12, [12, 24, 48])
+  const pageCount = Math.max(1, Math.ceil(listing.length / pageSize))
+  const page = Math.min(readCatalogNumber(params.get('page'), 1), pageCount)
+  const visibleProducts = listing.slice((page - 1) * pageSize, page * pageSize)
+  function goToProductsPage(nextPage: number) {
+    setParams(current => { const next = new URLSearchParams(current); next.set('page', String(nextPage)); return next })
+    document.getElementById('home-products')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  function updatePageSize(size: number) {
+    setParams(current => { const next = new URLSearchParams(current); next.delete('page'); if (size === 12) next.delete('pageSize'); else next.set('pageSize', String(size)); return next })
+  }
   const storyCopy = story.data?.intro.trim() || story.data?.sections.find(section => section.body.trim())?.body.trim() || ''
   const publishedGuides = (guides.data?.sections ?? []).map((section, index) => ({ section, index })).filter(({ section }) => section.body.trim() || section.bullets.some(bullet => bullet.trim())).slice(0, 3)
-  return <main>
-    <section className="bg-sand"><div className="container-page grid items-stretch lg:grid-cols-5"><div className="flex flex-col justify-center py-10 lg:col-span-2 lg:py-14 lg:pr-8"><p className="mb-4 text-xs font-bold uppercase tracking-[.18em] text-accent">My Pet Food · Pet supplies</p><h1 className="max-w-lg text-4xl font-bold leading-tight tracking-tight sm:text-5xl">Everyday essentials for cats, dogs & birds</h1><p className="mt-5 max-w-md leading-7 text-gray-700">Explore food, treats, toys and care for the pets who make your house a home.</p><div className="mt-7 flex flex-wrap gap-3"><Link to="/shop" className="btn-primary">Shop all products <ArrowRight size={17} /></Link><a href="#pet-categories" className="btn-secondary">Shop by pet</a></div></div><div className="relative min-h-[240px] overflow-hidden lg:col-span-3 lg:min-h-[400px]"><img src={photo('photo-1601758228041-f3b2795255f1')} alt="A dog enjoying time at home" fetchPriority="high" className="absolute inset-0 h-full w-full object-cover" /></div></div></section>
-    <section id="pet-categories" className="container-page scroll-mt-6 py-10 sm:py-14"><div className="mb-6 flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">Start with their favourites</p><h2 className="section-title mt-2">Shop by pet</h2></div><Link to="/shop" className="hidden text-sm font-bold text-brand underline sm:block">View all products</Link></div><div className="grid gap-5 md:grid-cols-3">{petCards.map(card => <Link key={card.name} to={`/category/${card.name.toLowerCase()}`} className="group relative min-h-[260px] overflow-hidden rounded-xl bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"><img src={card.image} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-500 group-hover:scale-105" /><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-6 text-white"><h3 className="text-2xl font-bold">{card.name}</h3><p className="mt-1 max-w-xs text-sm text-white/90">{card.copy}</p><span className="mt-4 inline-flex items-center gap-2 text-sm font-bold underline underline-offset-4">Shop {card.name.toLowerCase()} <ArrowRight size={15} /></span></div></Link>)}</div></section>
-    <section aria-label="Shop highlights" className="container-page pb-12 sm:pb-16"><div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">Explore the range</p><h2 className="section-title mt-2">Shop highlights</h2></div><Link to="/shop" className="text-sm font-bold text-brand underline">Browse all products →</Link></div>
-      {loading ? <p role="status" className="rounded-xl bg-sand p-8 text-center text-gray-600">Loading products…</p> : error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6"><p>{error}</p><button onClick={() => void refresh()} className="btn-secondary mt-4">Retry loading products</button></div> : highlights.length ? <ProductGrid products={highlights} /> : <div className="rounded-xl border border-dashed border-line bg-sand p-8 text-center"><p className="font-semibold">New products are being prepared.</p><Link to="/shop" className="mt-3 inline-block text-sm text-brand underline">Browse the shop</Link></div>}
+  return <main className="container-page py-8 sm:py-10">
+    <section id="home-products" aria-label="Shop products" className="scroll-mt-6">
+      <div className="mb-6"><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">My Pet Food · Pet supplies</p><h1 className="section-title mt-2">Shop pet supplies</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">Browse our range of food, treats, toys and everyday care. Featured products appear first.</p></div>
+      {loading ? <p role="status" className="rounded-xl bg-sand p-8 text-center text-gray-600">Loading products…</p> : error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6"><p>{error}</p><button onClick={() => void refresh()} className="btn-secondary mt-4">Retry loading products</button></div> : listing.length ? <ProductGrid products={visibleProducts} /> : <div className="rounded-xl border border-dashed border-line bg-sand p-8 text-center"><p className="font-semibold">No products are listed yet.</p><Link to="/shop" className="mt-3 inline-block text-sm text-brand underline">Browse the shop</Link></div>}
+      {!loading && !error && <CatalogPagination total={listing.length} page={page} pageSize={pageSize} onPageChange={goToProductsPage} onPageSizeChange={updatePageSize} />}
     </section>
     {storyCopy && !story.isError && <section aria-label="About the business" className="bg-brand py-10 text-white sm:py-14"><div className="container-page grid gap-6 md:grid-cols-[1fr_1.5fr]"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-white/75">The people behind the shop</p><h2 className="mt-3 font-serif text-3xl">{story.data?.title}</h2></div><div><p className="whitespace-pre-wrap break-words text-lg leading-8 text-white/90">{excerpt(storyCopy, 240)}</p><Link to="/our-story" className="mt-5 inline-flex items-center gap-2 font-semibold underline underline-offset-4">Read our story <ArrowRight size={17} /></Link></div></div></section>}
     {publishedGuides.length > 0 && !guides.isError && <section aria-label="Helpful guides" className="container-page py-12 sm:py-16"><div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-accent">A little reading for pet people</p><h2 className="section-title mt-2">Helpful guides</h2></div><Link to="/guides" className="text-sm font-bold text-brand underline">All pet care guides →</Link></div><div className="grid gap-5 md:grid-cols-3">{publishedGuides.map(({ section, index }) => <Link key={index} to={`/guides#section-${index + 1}`} className="rounded-xl border border-line bg-sand/50 p-6 transition hover:border-brand hover:bg-sand"><BookOpen className="text-accent" size={24} aria-hidden="true" /><h3 className="mt-4 break-words text-xl font-bold">{section.heading}</h3><p className="mt-3 break-words text-sm leading-7 text-gray-600">{excerpt(section.body || section.bullets[0] || '', 160)}</p><span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-brand">Read guide <ArrowRight size={16} /></span></Link>)}</div></section>}

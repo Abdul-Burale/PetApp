@@ -2,6 +2,7 @@ import { Minus, Plus, Star, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ProductGrid } from '../components/shop/ProductGrid'
+import { CatalogPagination, readCatalogNumber } from '../components/shop/CatalogPagination'
 import { ProductImage } from '../components/shop/ProductImage'
 import { SearchForm } from '../components/shop/SearchForm'
 import { useCatalog } from '../context/CatalogContext'
@@ -15,10 +16,22 @@ function CatalogListing({ fixedPet }: { fixedPet?: Pet }) {
   const { products, loading, error, refresh } = useCatalog()
   const filters = catalogFilters(params, fixedPet)
   const list = filterCatalog(products, filters)
+  const pageSize = readCatalogNumber(params.get('pageSize'), 12, [12, 24, 48])
+  const pageCount = Math.max(1, Math.ceil(list.length / pageSize))
+  const page = Math.min(readCatalogNumber(params.get('page'), 1), pageCount)
+  const visibleProducts = list.slice((page - 1) * pageSize, page * pageSize)
+  function goToProductsPage(nextPage: number) {
+    setParams(current => { const next = new URLSearchParams(current); next.set('page', String(nextPage)); return next })
+    document.getElementById('catalog-products')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  function updatePageSize(size: number) {
+    setParams(current => { const next = new URLSearchParams(current); next.delete('page'); if (size === 12) next.delete('pageSize'); else next.set('pageSize', String(size)); return next })
+  }
   function change(key: string, values: string[]) {
     setParams(current => {
       const next = new URLSearchParams(current)
       next.delete(key); values.forEach(value => next.append(key, value))
+      next.delete('page')
       if (key === 'q' && next.get('sort') === 'relevance') next.delete('sort')
       return next
     })
@@ -47,8 +60,11 @@ function CatalogListing({ fixedPet }: { fixedPet?: Pet }) {
       </div>
       {chips.length > 0 && <div aria-label="Active filters" className="flex flex-wrap items-center gap-2 border-t border-line pt-4">{chips.map(chip => <button key={chip.label} type="button" onClick={chip.remove} aria-label={chip.label.startsWith('Search:') ? 'Clear search' : `Remove ${chip.label} filter`} className="inline-flex max-w-full items-center gap-2 rounded-full bg-sand px-3 py-2 text-sm text-brand"><span className="min-w-0 break-words">{chip.label}</span><X size={14} className="shrink-0" /></button>)}<button type="button" onClick={() => setParams(new URLSearchParams())} className="px-2 py-2 text-sm font-semibold text-brand underline">Clear all</button></div>}
     </section>
-    <p role="status" className="my-5 text-sm text-gray-600">{loading ? 'Loading products…' : error ? 'Products could not be loaded' : `${list.length} ${list.length === 1 ? 'product' : 'products'}${filters.query ? ` matching “${filters.query}”` : ''}`}</p>
-    {error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6"><p>{error}</p><button onClick={() => void refresh()} className="btn-secondary mt-4">Retry loading products</button></div> : loading ? <div aria-hidden="true" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="aspect-square animate-pulse rounded-lg bg-sand" />)}</div> : list.length ? <ProductGrid products={list} /> : <section className="rounded-xl border border-dashed border-line bg-sand/40 p-8 text-center"><h2 className="text-xl font-bold">No products match{filters.query ? ` “${filters.query}”` : ' these filters'}</h2><p className="mt-3 text-sm text-gray-600">Try fewer words, remove a filter, or browse by pet.</p><div className="mt-5 flex flex-wrap justify-center gap-3"><button onClick={() => setParams(new URLSearchParams())} className="btn-secondary">Clear search and filters</button>{pets.map(pet => <Link key={pet} to={`/category/${pet.toLowerCase()}`} className="btn-secondary">Shop {pet.toLowerCase()}</Link>)}</div></section>}
+    <section id="catalog-products" aria-label="Products" className="scroll-mt-6">
+      {loading && <p role="status" className="my-5 text-sm text-gray-600">Loading products…</p>}
+      {error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6"><p>{error}</p><button onClick={() => void refresh()} className="btn-secondary mt-4">Retry loading products</button></div> : loading ? <div aria-hidden="true" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="aspect-square animate-pulse rounded-lg bg-sand" />)}</div> : list.length ? <ProductGrid products={visibleProducts} /> : <section className="rounded-xl border border-dashed border-line bg-sand/40 p-8 text-center"><h2 className="text-xl font-bold">No products match{filters.query ? ` “${filters.query}”` : ' these filters'}</h2><p className="mt-3 text-sm text-gray-600">Try fewer words, remove a filter, or browse by pet.</p><div className="mt-5 flex flex-wrap justify-center gap-3"><button onClick={() => setParams(new URLSearchParams())} className="btn-secondary">Clear search and filters</button>{pets.map(pet => <Link key={pet} to={`/category/${pet.toLowerCase()}`} className="btn-secondary">Shop {pet.toLowerCase()}</Link>)}</div></section>}
+      {!loading && !error && <CatalogPagination total={list.length} page={page} pageSize={pageSize} onPageChange={goToProductsPage} onPageSizeChange={updatePageSize} />}
+    </section>
   </main>
 }
 

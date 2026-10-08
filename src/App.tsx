@@ -6,11 +6,13 @@ import { Footer } from './components/layout/Footer'
 import { Header } from './components/layout/Header'
 import { BasketPage, CheckoutPage, CheckoutReturnPage } from './pages/BasketPages'
 import { HomePage } from './pages/HomePage'
-import { AccountPage, LoginPage, SignupPage } from './pages/AuthPages'
+import { LoginPage, SignupPage } from './pages/AuthPages'
+import { AccountPage } from './pages/AccountHubPage'
 import { CategoryPage, ProductPage, ShopPage } from './pages/ShopPages'
 import { AdminProductFormPage, AdminProductsPage } from './pages/AdminProductPages'
 import { ContentPageView } from './pages/ContentPages'
 import { AdminContentPage } from './pages/AdminContentPage'
+import { AdminSupportPage } from './pages/AdminSupportPage'
 import { pageSlugs } from './lib/contentPages'
 
 export function App() {
@@ -32,6 +34,7 @@ export function App() {
       <Route path="/admin/products/new" element={<StaffRoute><AdminProductFormPage /></StaffRoute>} />
       <Route path="/admin/products/:id" element={<StaffRoute><AdminProductFormPage /></StaffRoute>} />
       <Route path="/admin/content" element={<StaffRoute><AdminContentPage /></StaffRoute>} />
+      <Route path="/admin/support" element={<StaffRoute><AdminSupportPage /></StaffRoute>} />
       {pageSlugs.map(slug => <Route key={slug} path={`/${slug}`} element={<ContentPageView key={slug} slug={slug} />} />)}
       <Route path="*" element={<main className="container-page py-20"><h1 className="section-title">Page not found</h1><Link to="/" className="mt-4 inline-block text-brand underline">Return to home</Link></main>} />
     </Routes></div>

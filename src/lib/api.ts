@@ -5,6 +5,8 @@ export interface BackendAccount {
   email?: string
   role?: string
   displayName?: string
+  firstName?: string
+  lastName?: string
   phone?: string
 }
 
@@ -19,6 +21,7 @@ export interface BackendAddress {
   postcode: string
   phone?: string | null
   isDefault: boolean
+  purpose?: 'DELIVERY' | 'BILLING' | 'BOTH'
   countryCode?: string
   createdAt?: string
 }
@@ -110,6 +113,57 @@ export interface CustomerOrder {
   checkoutExpiresAt: string
   paidAt: string | null
   cancelledAt: string | null
+}
+
+export interface OrderHistoryPage {
+  data: Array<Pick<CustomerOrder, 'orderNumber' | 'createdAt' | 'orderStatus' | 'paymentStatus' | 'fulfilmentStatus' | 'currency' | 'itemSubtotalPence' | 'deliveryPence' | 'taxPence' | 'totalPence' | 'items'>>
+  nextCursor: string | null
+  hasMore: boolean
+}
+
+export type SupportStatus = 'NEW' | 'IN_PROGRESS' | 'WAITING_ON_CUSTOMER' | 'RESOLVED' | 'CLOSED'
+export interface SupportSummary { requestId: string; orderNumber?: string | null; subject: string; status: SupportStatus; messageCount: number; createdAt: string; updatedAt: string }
+export interface SupportMessage { authorType: 'CUSTOMER' | 'STAFF'; body: string; createdAt: string }
+export interface SupportDetail { requestId: string; orderNumber?: string | null; subject: string; status: SupportStatus; messages: SupportMessage[]; createdAt: string; updatedAt: string }
+export interface StaffSupportDetail extends SupportDetail {
+  customer: { email: string; firstName?: string | null; lastName?: string | null; displayName?: string | null }
+  linkedOrder?: { orderNumber: string; orderStatus: string; paymentStatus: string; totalPence: number; currency: string } | null
+}
+
+async function authenticatedJson<T>(path: string, fallback: string, init: RequestInit = {}) {
+  return jsonResponse<T>(await apiFetch(path, init), fallback)
+}
+
+export function listMyOrders(limit = 20, cursor?: string) {
+  const query = new URLSearchParams({ limit: String(limit) })
+  if (cursor) query.set('cursor', cursor)
+  return authenticatedJson<OrderHistoryPage>(`/v1/me/orders?${query}`, 'Your order history could not be loaded.')
+}
+export function listSupportRequests(limit = 20) {
+  return authenticatedJson<SupportSummary[]>(`/v1/me/support-requests?limit=${limit}`, 'Your support requests could not be loaded.')
+}
+export function getSupportRequest(id: string) {
+  return authenticatedJson<SupportDetail>(`/v1/me/support-requests/${encodeURIComponent(id)}`, 'This support request could not be loaded.')
+}
+export function createSupportRequest(input: { orderNumber?: string; subject: string; message: string }) {
+  return authenticatedJson<SupportDetail>('/v1/me/support-requests', 'Your support request could not be sent.', { method: 'POST', body: JSON.stringify(input) })
+}
+export function replyToSupportRequest(id: string, message: string) {
+  return authenticatedJson<SupportDetail>(`/v1/me/support-requests/${encodeURIComponent(id)}/messages`, 'Your reply could not be sent.', { method: 'POST', body: JSON.stringify({ message }) })
+}
+export function listStaffSupportRequests(status?: SupportStatus) {
+  const query = new URLSearchParams({ limit: '50' })
+  if (status) query.set('status', status)
+  return authenticatedJson<SupportSummary[]>(`/v1/staff/support-requests?${query}`, 'The support queue could not be loaded.')
+}
+export function getStaffSupportRequest(id: string) {
+  return authenticatedJson<StaffSupportDetail>(`/v1/staff/support-requests/${encodeURIComponent(id)}`, 'This support request could not be loaded.')
+}
+export function replyAsStaff(id: string, message: string) {
+  return authenticatedJson<StaffSupportDetail>(`/v1/staff/support-requests/${encodeURIComponent(id)}/messages`, 'Your reply could not be sent.', { method: 'POST', body: JSON.stringify({ message }) })
+}
+export function updateSupportStatus(id: string, status: SupportStatus) {
+  return authenticatedJson<StaffSupportDetail>(`/v1/staff/support-requests/${encodeURIComponent(id)}/status`, 'The support request status could not be updated.', { method: 'PATCH', body: JSON.stringify({ status }) })
 }
 
 export async function createCheckoutSession(input: CheckoutRequest, idempotencyKey: string, authenticated: boolean): Promise<CheckoutSession> {
@@ -305,7 +359,7 @@ export async function getMyAccount(): Promise<BackendAccount> {
   return jsonResponse<BackendAccount>(response, 'Your account could not be loaded.')
 }
 
-export async function updateMyAccount(input: { displayName: string; phone: string }): Promise<BackendAccount> {
+export async function updateMyAccount(input: { displayName?: string; firstName?: string; lastName?: string; phone?: string }): Promise<BackendAccount> {
   const response = await apiFetch('/v1/me', { method: 'PATCH', body: JSON.stringify(input) })
   return jsonResponse<BackendAccount>(response, 'Your account details could not be saved.')
 }
@@ -316,7 +370,7 @@ export async function listAddresses(): Promise<BackendAddress[]> {
   return unwrapData(payload)
 }
 
-export async function createAddress(input: Omit<BackendAddress, 'id'>): Promise<BackendAddress> {
+export async function createAddress(input: Omit<BackendAddress, 'id' | 'countryCode' | 'createdAt'>): Promise<BackendAddress> {
   const response = await apiFetch('/v1/me/addresses', { method: 'POST', body: JSON.stringify(input) })
   return jsonResponse<BackendAddress>(response, 'Your address could not be saved.')
 }

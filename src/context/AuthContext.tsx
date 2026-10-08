@@ -1,6 +1,6 @@
 import type { Session, User } from '@supabase/supabase-js'
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { getMyAccount, type BackendAccount } from '../lib/api'
+import { getMyAccount, updateMyAccount, type BackendAccount } from '../lib/api'
 import { supabase, supabaseConfigurationError } from '../lib/supabase'
 
 interface AuthContextValue {
@@ -12,7 +12,7 @@ interface AuthContextValue {
   loading: boolean
   configurationError: string | null
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string) => Promise<Session | null>
+  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<Session | null>
   signOut: () => Promise<void>
   refreshBackendAccount: () => Promise<BackendAccount | null>
 }
@@ -66,10 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setBackendError(null)
     void getMyAccount()
       .then(account => {
-        if (active) {
-          setBackendAccount(account)
-          setBackendError(null)
-        }
+        const firstName = String(session.user.user_metadata?.first_name ?? '').trim()
+        const lastName = String(session.user.user_metadata?.last_name ?? '').trim()
+        const needsNameSync = (!account.firstName || !account.lastName) && (firstName || lastName)
+        return needsNameSync ? updateMyAccount({ firstName: account.firstName || firstName, lastName: account.lastName || lastName }).catch(() => account) : account
+      })
+      .then(account => {
+        if (active) { setBackendAccount(account); setBackendError(null) }
       })
       .catch(error => {
         if (active) setBackendError(error instanceof Error ? error.message : 'Your account could not be loaded.')
@@ -95,12 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error
       setSession(data.session)
     },
-    signUp: async (email, password) => {
+    signUp: async (email, password, firstName, lastName) => {
       if (!supabase) throw new Error(supabaseConfigurationError ?? 'Sign up is not configured.')
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/account` },
+        options: { emailRedirectTo: `${window.location.origin}/account`, data: { first_name: firstName, last_name: lastName } },
       })
       if (error) throw error
       setSession(data.session)

@@ -4,7 +4,15 @@ import { apiProductToProduct, catalogueStaleTime, productQueryKey } from '../con
 import type { ApiProductDetail } from '../lib/api'
 import type { Product } from '../types/product'
 
-export interface ProductDetail extends Product { images: ApiProductDetail['images']; weightGrams: number }
+export interface ProductDetail extends Product {
+  images: ApiProductDetail['images']
+  weightGrams: number
+  lengthMm: number | null
+  widthMm: number | null
+  heightMm: number | null
+  sizeLabel: string | null
+  sizeOptions: NonNullable<ApiProductDetail['sizeOptions']>
+}
 
 export function useApiProduct(slug: string) {
   const query = useQuery({
@@ -13,7 +21,9 @@ export function useApiProduct(slug: string) {
       const detail = await getApiProduct(slug)
       const product = apiProductToProduct(detail.product)
       const detailImage = detail.images[0]?.url
-      return { ...product, image: detailImage ?? product.image, images: detail.images, weightGrams: detail.weightGrams }
+      return { ...product, image: detailImage ?? product.image, images: detail.images, weightGrams: detail.weightGrams,
+        lengthMm: detail.lengthMm, widthMm: detail.widthMm, heightMm: detail.heightMm,
+        sizeLabel: detail.sizeLabel?.trim() || null, sizeOptions: detail.sizeOptions ?? [] }
     },
     staleTime: catalogueStaleTime,
     enabled: Boolean(slug),

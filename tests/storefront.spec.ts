@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { ApiProduct, DeliveryQuote } from '../src/lib/api'
+import type { ApiProduct, ApiProductDetail, DeliveryQuote } from '../src/lib/api'
 import { catalogFilters, filterCatalog, searchScore } from '../src/lib/catalog'
 import { apiProductToProduct } from '../src/lib/product'
 
@@ -24,7 +24,7 @@ const defaultQuotes: DeliveryQuote[] = [
   { code: 'express', name: 'Express delivery', price: { amount: 595, currency: 'GBP' }, estimatedBusinessDays: { min: 1, max: 2 } },
 ]
 
-async function fixture(page: Page, options: { emptyContent?: boolean; basket?: Array<{ product: ReturnType<typeof apiProductToProduct>; quantity: number }>; catalogueError?: boolean; missingFirstImage?: boolean } = {}) {
+async function fixture(page: Page, options: { emptyContent?: boolean; basket?: Array<{ product: ReturnType<typeof apiProductToProduct>; quantity: number }>; catalogueError?: boolean; missingFirstImage?: boolean; detail?: Partial<ApiProductDetail> } = {}) {
   if (options.basket) await page.addInitScript(basket => { if (!localStorage.getItem('mypetfood-cart')) localStorage.setItem('mypetfood-cart', JSON.stringify(basket)) }, options.basket)
   const calls: any[] = []
   let quotes = defaultQuotes, failure: { code: string; message: string; status: number; retry?: string } | null = null
@@ -38,7 +38,7 @@ async function fixture(page: Page, options: { emptyContent?: boolean; basket?: A
     if (url.pathname === '/v1/products') return catalogueError ? reply({ error: { message: 'Catalogue temporarily unavailable' } }, 503) : reply({ data: products, hasMore: false })
     if (url.pathname.startsWith('/v1/products/')) {
       const product = products.find(product => url.pathname.endsWith(`/${product.slug}`))
-      return product ? reply({ product, images: [{ url: options.missingFirstImage ? '/missing-test-package.jpeg' : '/brand/mypetfood-logo.jpeg', altText: 'Front of package', position: 0 }, { url: '/brand/mypetfood-logo.jpeg?back', altText: 'Back of package', position: 1 }], weightGrams: 1500, lengthMm: null, widthMm: null, heightMm: null }) : reply({ error: { message: 'Not found' } }, 404)
+      return product ? reply({ product, images: [{ url: options.missingFirstImage ? '/missing-test-package.jpeg' : '/brand/mypetfood-logo.jpeg', altText: 'Front of package', position: 0 }, { url: '/brand/mypetfood-logo.jpeg?back', altText: 'Back of package', position: 1 }], weightGrams: 1500, lengthMm: null, widthMm: null, heightMm: null, ...options.detail }) : reply({ error: { message: 'Not found' } }, 404)
     }
     if (url.pathname === '/v1/content/site') return reply({ contact: { email: '', phones: [], address: { line1: '', line2: '', townCity: '', county: '', postcode: '', country: '' }, openingHours: '', responseTime: '', version: 0, updatedAt: '2026-10-06T12:00:00Z' }, footer: { tagline: '', groups: [{ title: 'Help', links: [{ label: 'Delivery', route: '/delivery', active: true }] }], version: 0, updatedAt: '2026-10-06T12:00:00Z' } })
     if (url.pathname.startsWith('/v1/content/pages/')) {
@@ -145,8 +145,8 @@ test('category pages share URL filters, featured/price sorting, and empty-state 
 
 test('homepage uses published teasers, real featured products and correct guide anchors', async ({ page }) => {
   await fixture(page); await page.goto('/')
-  await expect(page.locator('main h1')).toHaveText('Everyday essentials for cats, dogs & birds')
-  await expect(page.getByRole('region', { name: 'Shop highlights' }).locator('article')).toHaveCount(2)
+  await expect(page.locator('main h1')).toHaveText('Shop pet supplies')
+  await expect(page.getByRole('region', { name: 'Shop products', exact: true }).locator('article')).toHaveCount(9)
   await expect(page.getByRole('region', { name: 'About the business' })).toContainText('Approved shop story')
   const guides = page.getByRole('region', { name: 'Helpful guides' })
   await expect(guides.locator('h3')).toHaveCount(3)
@@ -159,7 +159,7 @@ test('homepage uses published teasers, real featured products and correct guide 
 
 test('homepage does not publish empty story/guide placeholders', async ({ page }) => {
   await fixture(page, { emptyContent: true }); await page.goto('/')
-  await expect(cards(page)).toHaveCount(2)
+  await expect(cards(page)).toHaveCount(9)
   await expect(page.getByRole('region', { name: 'About the business' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Helpful guides' })).toHaveCount(0)
   await expect(page.getByRole('searchbox').filter({ visible: true })).toHaveCount(1)
@@ -167,7 +167,7 @@ test('homepage does not publish empty story/guide placeholders', async ({ page }
 
 test('product gallery, weight, description layout and quantity bounds', async ({ page }) => {
   await fixture(page); await page.goto('/product/dry-chicken-meal')
-  await expect(page.locator('main')).toContainText('Package weight: 1.5 kg')
+  await expect(page.getByRole('region', { name: 'Order this product' })).toContainText('1.5 kg')
   await expect(page.getByText('Nutritious kibble.\nServe fresh water alongside.', { exact: true })).toHaveCSS('white-space', 'pre-wrap')
   await page.getByRole('button', { name: 'Show product image 2' }).click()
   await expect(page.getByRole('region', { name: 'Product images' }).getByRole('img', { name: 'Back of package', exact: true })).toBeVisible()
@@ -179,9 +179,9 @@ test('product gallery, weight, description layout and quantity bounds', async ({
   await page.getByRole('button', { name: 'Add to basket', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Your basket' })).toBeVisible()
   await expect(page.getByRole('dialog').getByLabel('Quantity of Dry Chicken Meal', { exact: true })).toHaveText('99')
-  await page.keyboard.press('Escape'); await page.getByRole('button', { name: 'Add to basket', exact: true }).click()
-  await expect(page.getByRole('dialog').getByLabel('Quantity of Dry Chicken Meal', { exact: true })).toHaveText('99')
-  await page.keyboard.press('Escape'); await page.reload(); await page.getByRole('button', { name: 'Open basket' }).click()
+  await page.keyboard.press('Escape'); await expect(page.getByRole('button', { name: 'Add to basket', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Buy now', exact: true })).toBeDisabled()
+  await page.reload(); await page.getByRole('button', { name: 'Open basket' }).click()
   await expect(page.getByRole('dialog').getByLabel('Quantity of Dry Chicken Meal', { exact: true })).toHaveText('99')
 })
 
@@ -350,6 +350,79 @@ test('late delivery responses are also discarded when basket quantities change',
   await page.getByRole('button', { name: 'Check delivery options' }).click()
   await expect(page.getByRole('radio')).toHaveCount(2)
   expect(mock.calls[1].items[0].quantity).toBe(2)
+})
+
+test('product cards open details and gallery arrows/keyboard wrap between images', async ({ page }) => {
+  await fixture(page); await page.goto('/shop')
+  await expect(page.getByRole('button', { name: /^Add/ })).toHaveCount(0)
+  await page.getByRole('link', { name: 'View Dry Chicken Meal', exact: true }).click()
+  await expect(page.locator('main h1')).toHaveText('Dry Chicken Meal')
+  const gallery = page.getByRole('region', { name: 'Product images' })
+  await gallery.getByRole('button', { name: 'Next product image' }).click()
+  await expect(gallery.getByRole('img', { name: 'Back of package' })).toBeVisible()
+  await gallery.getByRole('button', { name: 'Next product image' }).click()
+  await expect(gallery.getByRole('img', { name: 'Front of package' })).toBeVisible()
+  await gallery.focus(); await gallery.press('ArrowLeft')
+  await expect(gallery.getByRole('img', { name: 'Back of package' })).toBeVisible()
+  await gallery.getByRole('button', { name: 'Previous product image' }).click()
+  await expect(gallery.getByRole('img', { name: 'Front of package' })).toBeVisible()
+})
+
+test('product accordions open with keyboard and similar products stay relevant', async ({ page }) => {
+  await fixture(page, { detail: { lengthMm: 250, widthMm: 120, heightMm: 60 } }); await page.goto('/product/dry-chicken-meal')
+  const details = page.getByRole('region', { name: 'Product details', exact: true })
+  await expect(details.locator('details[open]')).toHaveCount(0)
+  const specs = details.locator('summary').filter({ hasText: 'Product specifications' })
+  await specs.focus(); await specs.press('Enter')
+  await expect(details.getByText('250 mm', { exact: true })).toBeVisible()
+  await specs.press('Enter'); await expect(details.getByText('250 mm', { exact: true })).not.toBeVisible()
+  await page.getByRole('button', { name: 'No reviews yet', exact: true }).click()
+  await expect(details.getByText('No customer reviews yet.', { exact: true })).toBeVisible()
+  await details.locator('summary').filter({ hasText: 'Seller information' }).click()
+  await expect(details.getByText('Sold by My Pet Food', { exact: true })).toBeVisible()
+  const related = page.getByRole('region', { name: 'Similar products' })
+  await expect(related.locator('article')).toHaveCount(3)
+  await expect(related).not.toContainText('Dry Chicken Meal')
+  await expect(related).not.toContainText('Daily Care')
+  await related.getByRole('link', { name: 'View Crunchy Training Bites', exact: true }).click()
+  await expect(page.locator('main h1')).toHaveText('Crunchy Training Bites')
+  await expect(page.getByRole('spinbutton', { name: 'Quantity', exact: true })).toHaveValue('1')
+})
+
+test('buy now adds the selected quantity, preserves other items and opens checkout without a drawer', async ({ page }) => {
+  await fixture(page, { basket: basket(1, 1) }); await page.goto('/product/dry-chicken-meal')
+  await page.getByRole('spinbutton', { name: 'Quantity', exact: true }).fill('2')
+  await page.getByRole('button', { name: 'Buy now', exact: true }).click()
+  await expect(page).toHaveURL(/\/checkout$/)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('main')).toContainText('3 items in basket')
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('mypetfood-cart') ?? '[]'))
+  expect(saved.find((item: any) => item.product.id === products[0].id).quantity).toBe(2)
+  expect(saved.find((item: any) => item.product.id === products[1].id).quantity).toBe(1)
+})
+
+test('unavailable products remain viewable but cannot be purchased', async ({ page }) => {
+  await fixture(page); await page.goto('/shop')
+  await page.getByRole('link', { name: 'View Daily Care', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Currently unavailable', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Buy now', exact: true })).toBeDisabled()
+})
+
+test('optional backend size choices select the real product and checkout ID', async ({ page }) => {
+  await fixture(page, { detail: { sizeLabel: 'Small', sizeOptions: [
+    { productId: products[0].id, slug: products[0].slug, label: 'Small', available: true },
+    { productId: products[2].id, slug: products[2].slug, label: 'Large', available: true },
+  ] } })
+  await page.goto('/product/dry-chicken-meal')
+  const sizes = page.getByRole('region', { name: 'Product sizes' })
+  await expect(sizes.getByRole('link', { name: 'Small', exact: true })).toHaveAttribute('aria-current', 'page')
+  await sizes.getByRole('link', { name: 'Large', exact: true }).click()
+  await expect(page.locator('main h1')).toHaveText('Crunchy Training Bites')
+  await expect(sizes.getByRole('link', { name: 'Large', exact: true })).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('button', { name: 'Buy now', exact: true }).click()
+  await expect(page).toHaveURL(/\/checkout$/)
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('mypetfood-cart') ?? '[]'))
+  expect(saved).toHaveLength(1); expect(saved[0].product.id).toBe(products[2].id)
 })
 
 test('storefront design screenshots', async ({ page }, testInfo) => {

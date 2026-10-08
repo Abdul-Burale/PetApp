@@ -47,6 +47,9 @@ export interface ApiProductDetail {
   lengthMm: number | null
   widthMm: number | null
   heightMm: number | null
+  /** Optional extension proposed in PRODUCT_PAGE_BACKEND_BRIEF.md. */
+  sizeLabel?: string | null
+  sizeOptions?: Array<{ productId: string; slug: string; label: string; available: boolean }>
 }
 
 export interface DeliveryQuoteInput {
@@ -60,6 +63,69 @@ export interface DeliveryQuote {
   name: string
   price: { amount: number; currency: string }
   estimatedBusinessDays: { min: number; max: number }
+}
+
+export interface CheckoutAddress {
+  recipientName: string
+  line1: string
+  line2: string
+  city: string
+  county: string
+  postcode: string
+  countryCode: 'GB'
+  phone: string
+}
+
+export interface CheckoutRequest {
+  items: Array<{ productId: string; quantity: number }>
+  customer: { email: string; phone: string }
+  shippingAddress: CheckoutAddress
+  billingAddress: CheckoutAddress | null
+  deliveryOptionCode: string
+  successUrl: string
+  cancelUrl: string
+}
+
+export interface CheckoutSession {
+  orderNumber: string
+  checkoutSessionId: string
+  checkoutUrl: string
+  expiresAt: string
+  orderAccessToken?: string | null
+  totals: { itemSubtotalPence: number; deliveryPence: number; taxPence: number; totalPence: number; currency: 'GBP' }
+}
+
+export interface CustomerOrder {
+  orderNumber: string
+  orderStatus: string
+  paymentStatus: string
+  fulfilmentStatus: string
+  currency: string
+  itemSubtotalPence: number
+  deliveryPence: number
+  taxPence: number
+  totalPence: number
+  items: Array<{ sku: string; name: string; unitPricePence: number; quantity: number; lineTotalPence: number }>
+  createdAt: string
+  checkoutExpiresAt: string
+  paidAt: string | null
+  cancelledAt: string | null
+}
+
+export async function createCheckoutSession(input: CheckoutRequest, idempotencyKey: string, authenticated: boolean): Promise<CheckoutSession> {
+  const init: RequestInit = { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) }
+  const response = authenticated
+    ? await apiFetch('/v1/checkout-sessions', init)
+    : await publicFetch('/v1/checkout-sessions', init, 'Checkout could not be reached. Please try again.')
+  return jsonResponse<CheckoutSession>(response, 'Checkout could not be started. Please try again.')
+}
+
+export async function getCustomerOrder(orderNumber: string, guestToken?: string | null): Promise<CustomerOrder> {
+  const headers = guestToken ? { 'X-Order-Access-Token': guestToken } : undefined
+  const response = headers
+    ? await publicFetch(`/v1/orders/${encodeURIComponent(orderNumber)}`, { headers }, 'Your order could not be reached. Please try again.')
+    : await apiFetch(`/v1/orders/${encodeURIComponent(orderNumber)}`)
+  return jsonResponse<CustomerOrder>(response, 'Your order could not be loaded. Please try again.')
 }
 
 export async function getDeliveryQuotes(input: DeliveryQuoteInput, signal?: AbortSignal): Promise<DeliveryQuote[]> {

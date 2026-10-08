@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useCatalog } from '../context/CatalogContext'
+import { useAuth } from '../context/AuthContext'
 import { BasketItem } from '../components/shop/BasketItem'
-import { BackendApiError, getDeliveryQuotes, type DeliveryQuote } from '../lib/api'
+import { BackendApiError, createCheckoutSession, getCustomerOrder, getDeliveryQuotes, type CheckoutRequest, type CustomerOrder, type DeliveryQuote } from '../lib/api'
 
 const money = (pence: number) => `£${(pence / 100).toFixed(2)}`
 const postcodeKey = (value: string) => value.trim().toUpperCase().replace(/\s+/g, '')
@@ -97,6 +98,100 @@ export function BasketPage() {
 export function CheckoutPage() {
   const { items, total, count } = useCart()
   const { loading, error } = useCatalog()
+  const { session } = useAuth()
   const blocked = loading || Boolean(error) || items.some(item => !item.product.available || item.unavailableReason)
-  return <main className="container-page py-10"><h1 className="text-3xl font-bold">Checkout</h1>{!items.length || blocked ? <section className="mt-7 rounded-xl border border-line p-6"><h2 className="text-lg font-bold">{!items.length ? 'Your basket is empty' : 'Check your basket first'}</h2><p className="mt-3 text-gray-600">{loading ? 'Checking product availability…' : error ? 'Availability could not be checked. Please refresh your basket.' : blocked ? 'Remove unavailable products before continuing.' : 'Add a product before starting checkout.'}</p><Link to="/basket" className="btn-secondary mt-5">Back to basket</Link></section> : <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]"><section className="rounded-xl border border-line p-6"><h2 className="text-lg font-bold">Almost there</h2><p className="mt-3 leading-6 text-gray-600">This is a prototype checkout. Your basket has been saved, but no payment will be taken.</p><Link to="/basket" className="btn-secondary mt-6">Back to basket</Link></section><aside className="rounded-xl bg-sand p-6"><h2 className="font-bold">Order summary</h2><p className="mt-3 text-sm text-gray-600">{count} item{count === 1 ? '' : 's'} in basket</p><div className="mt-5 flex justify-between font-bold"><span>Subtotal</span><span>£{total.toFixed(2)}</span></div><p className="mt-3 text-xs text-gray-600">Delivery is not included. Payment will be enabled separately.</p></aside></div>}</main>
+  const [form, setForm] = useState({ email: session?.user.email ?? '', phone: '', recipientName: '', line1: '', line2: '', city: '', county: '', postcode: '' })
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [attempt, setAttempt] = useState<{ key: string; body: CheckoutRequest } | null>(null)
+  const basketSnapshot = useRef<Array<{ productId: string; quantity: number }>>([])
+  const { removePurchased } = useCart()
+  useEffect(() => { if (session?.user.email) setForm(current => ({ ...current, email: current.email || session.user.email || '' })) }, [session?.user.email])
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (busy || blocked || !items.length) return
+    setBusy(true); setMessage('')
+    try {
+      let currentAttempt = attempt
+      if (!currentAttempt) {
+        const origin = window.location.origin
+        const shippingAddress = { recipientName: form.recipientName.trim(), line1: form.line1.trim(), line2: form.line2.trim(), city: form.city.trim(), county: form.county.trim(), postcode: form.postcode.trim().toUpperCase(), countryCode: 'GB' as const, phone: form.phone.trim() }
+        const body: CheckoutRequest = {
+          items: items.map(({ product, quantity }) => ({ productId: product.id, quantity })),
+          customer: { email: form.email.trim(), phone: form.phone.trim() },
+          shippingAddress, billingAddress: null, deliveryOptionCode: 'standard',
+          // The API must replace {ORDER_NUMBER} after assigning the order number.
+          successUrl: `${origin}/checkout/success?orderNumber={ORDER_NUMBER}`,
+          cancelUrl: `${origin}/checkout/cancel?orderNumber={ORDER_NUMBER}`,
+        }
+        currentAttempt = { key: crypto.randomUUID(), body }
+        setAttempt(currentAttempt)
+        basketSnapshot.current = body.items
+      }
+      const result = await createCheckoutSession(currentAttempt.body, currentAttempt.key, Boolean(session))
+      if (!result.checkoutUrl || !result.orderNumber) throw new BackendApiError('The payment provider returned an incomplete checkout response.')
+      if (result.orderAccessToken) sessionStorage.setItem(`mypetfood-order-token:${result.orderNumber}`, result.orderAccessToken)
+      sessionStorage.setItem(`mypetfood-order-items:${result.orderNumber}`, JSON.stringify(basketSnapshot.current.length ? basketSnapshot.current : currentAttempt.body.items))
+      window.location.assign(result.checkoutUrl)
+    } catch (cause) {
+      if (cause instanceof BackendApiError && cause.status !== undefined && cause.status >= 400 && cause.status < 500) setAttempt(null)
+      setMessage(cause instanceof Error ? cause.message : 'Checkout could not be started. Please try again.')
+      setBusy(false)
+    }
+  }
+  const update = (name: string, value: string) => setForm(current => ({ ...current, [name]: value }))
+  return <main className="container-page py-10"><h1 className="text-3xl font-bold">Checkout</h1>{!items.length || blocked ? <section className="mt-7 rounded-xl border border-line p-6"><h2 className="text-lg font-bold">{!items.length ? 'Your basket is empty' : 'Check your basket first'}</h2><p className="mt-3 text-gray-600">{loading ? 'Checking product availability…' : error ? 'Availability could not be checked. Please refresh your basket.' : blocked ? 'Remove unavailable products before continuing.' : 'Add a product before starting checkout.'}</p><Link to="/basket" className="btn-secondary mt-5">Back to basket</Link></section> : <div className="mt-7 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_360px]"><form onSubmit={submit} className="space-y-7 rounded-xl border border-line p-5 sm:p-7"><section><h2 className="text-lg font-bold">Contact details</h2><p className="mt-1 text-sm text-gray-600">We’ll use these details for this order.</p><label className="mt-4 block text-sm font-semibold">Email address<input required type="email" autoComplete="email" maxLength={254} value={form.email} onChange={event => update('email', event.target.value)} className="mt-1.5 w-full rounded-lg border border-line bg-white px-3 py-2.5 font-normal" /></label></section><section className="border-t border-line pt-6"><h2 className="text-lg font-bold">Delivery address</h2><p className="mb-4 mt-1 text-sm text-gray-600">Delivery is currently available within the UK.</p><CheckoutAddressFields form={form} update={update} /></section>{message && <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-900">{message}{attempt && <p className="mt-2">If this was a connection timeout, retrying will safely reuse the same checkout attempt.</p>}</div>}<button type="submit" disabled={busy || blocked} className="btn-primary w-full disabled:cursor-wait disabled:opacity-50">{busy ? 'Connecting to secure checkout…' : 'Continue to secure payment'}</button><p className="text-xs leading-5 text-gray-500">Payment is handled by Stripe Checkout. Card details are entered on Stripe, not stored by this website.</p><Link to="/basket" className="inline-block text-sm text-brand underline">Back to basket</Link></form><aside className="h-fit rounded-xl bg-sand p-6"><h2 className="font-bold">Order summary</h2><p className="mt-3 text-sm text-gray-600">{count} item{count === 1 ? '' : 's'} in basket</p><div className="mt-5 flex justify-between font-bold"><span>Subtotal</span><span>£{total.toFixed(2)}</span></div><p className="mt-3 text-sm text-gray-600">Delivery is calculated by the server from your postcode. Final totals are confirmed before payment.</p></aside></div>}</main>
+}
+
+function CheckoutAddressFields({ form, update }: { form: Record<string, string>; update: (name: string, value: string) => void }) {
+  const fields = [
+    ['recipientName', 'Full name', 'name'], ['line1', 'Address line 1', 'address-line1'], ['line2', 'Address line 2 (optional)', 'address-line2'],
+    ['city', 'Town or city', 'address-level2'], ['county', 'County (optional)', 'address-level1'], ['postcode', 'Postcode', 'postal-code'], ['phone', 'Phone number', 'tel'],
+  ]
+  return <div className="grid gap-4 sm:grid-cols-2">{fields.map(([key, label, autocomplete]) => <label key={key} className={`block text-sm font-semibold ${key === 'line1' || key === 'line2' ? 'sm:col-span-2' : ''}`}>{label}<input required={!['line2', 'county'].includes(key)} autoComplete={autocomplete} maxLength={key === 'phone' ? 40 : 200} value={form[key] ?? ''} onChange={event => update(key, event.target.value)} className="mt-1.5 w-full rounded-lg border border-line bg-white px-3 py-2.5 font-normal" /></label>)}</div>
+}
+
+export function CheckoutReturnPage({ cancelled = false }: { cancelled?: boolean }) {
+  const [search] = useSearchParams()
+  const orderNumber = search.get('orderNumber') ?? ''
+  const { removePurchased } = useCart()
+  const [order, setOrder] = useState<CustomerOrder | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [poll, setPoll] = useState(0)
+  const token = orderNumber ? sessionStorage.getItem(`mypetfood-order-token:${orderNumber}`) : null
+  useEffect(() => {
+    if (!orderNumber) { setError('We could not identify this order. Check your order link or contact us.'); setLoading(false); return }
+    let active = true
+    let timer: number | undefined
+    void getCustomerOrder(orderNumber, token).then(value => {
+      if (!active) return
+      setOrder(value); setError('')
+      if (value.paymentStatus === 'paid' || value.orderStatus === 'confirmed') {
+        try {
+          const purchased = JSON.parse(sessionStorage.getItem(`mypetfood-order-items:${orderNumber}`) ?? '[]') as Array<{ productId: string; quantity: number }>
+          if (purchased.length) removePurchased(purchased)
+          sessionStorage.removeItem(`mypetfood-order-items:${orderNumber}`)
+        } catch { /* Keep the receipt visible even if browser storage was cleared. */ }
+      } else if (!['cancelled', 'failed'].includes(value.orderStatus.toLowerCase()) && !['failed', 'cancelled'].includes(value.paymentStatus.toLowerCase()) && poll < 60) {
+        timer = window.setTimeout(() => setPoll(previous => previous + 1), 2500)
+      }
+    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'Order status could not be loaded.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false; if (timer) window.clearTimeout(timer) }
+  }, [orderNumber, poll, removePurchased, token])
+  const paid = order?.paymentStatus?.toLowerCase() === 'paid' || order?.orderStatus?.toLowerCase() === 'confirmed'
+  const terminal = order && ['cancelled', 'failed'].includes(order.orderStatus.toLowerCase())
+  return <main className="container-page py-12"><section className="mx-auto max-w-3xl rounded-2xl border border-line bg-white p-6 shadow-sm sm:p-10">
+    <p className="text-sm font-bold uppercase tracking-wide text-brand">{cancelled ? 'Checkout return' : 'Order update'}</p>
+    <h1 className="mt-2 text-3xl font-bold">{paid ? 'Thank you for your order' : terminal ? 'Payment was not completed' : 'Checking your order status'}</h1>
+    {orderNumber && <p className="mt-3 text-sm text-gray-600">Order reference: <span className="font-semibold text-gray-900">{orderNumber}</span></p>}
+    {loading && <p role="status" className="mt-6">Connecting securely to the order service…</p>}
+    {error && <div role="alert" className="mt-6 rounded-lg bg-red-50 p-4 text-sm text-red-900">{error}</div>}
+    {order && <>
+      <p role="status" className="mt-5 leading-7 text-gray-700">{paid ? 'Your payment is confirmed by the payment service.' : terminal ? 'No payment was confirmed. Your basket has been kept, so you can review it and try again.' : poll >= 60 ? 'Payment can take a little time to confirm. This page does not treat the redirect as proof of payment; refresh to check again.' : 'We are waiting for the payment provider to confirm this order. This page will update automatically.'}</p>
+      <div className="mt-6 divide-y divide-line rounded-xl border border-line px-4">{order.items.map((item, index) => <div key={`${item.sku}-${index}`} className="flex justify-between gap-4 py-3 text-sm"><span>{item.name} × {item.quantity}</span><span className="font-semibold">{money(item.lineTotalPence)}</span></div>)}<div className="flex justify-between py-4 font-bold"><span>Order total</span><span>{money(order.totalPence)}</span></div></div>
+    </>}
+    <div className="mt-7 flex flex-wrap gap-3"><Link to={paid ? '/shop' : '/basket'} className="btn-primary">{paid ? 'Continue shopping' : 'Return to basket'}</Link>{poll >= 60 && <button className="btn-secondary" onClick={() => { setLoading(true); setPoll(value => value + 1) }}>Check status again</button>}<Link to="/contact" className="btn-secondary">Contact us</Link></div>
+  </section></main>
 }

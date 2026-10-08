@@ -4,7 +4,7 @@ import { StaffRoute } from './components/auth/StaffRoute'
 import { CartDrawer } from './components/shop/CartDrawer'
 import { Footer } from './components/layout/Footer'
 import { Header } from './components/layout/Header'
-import { BasketPage, CheckoutPage } from './pages/BasketPages'
+import { BasketPage, CheckoutPage, CheckoutReturnPage } from './pages/BasketPages'
 import { HomePage } from './pages/HomePage'
 import { AccountPage, LoginPage, SignupPage } from './pages/AuthPages'
 import { CategoryPage, ProductPage, ShopPage } from './pages/ShopPages'
@@ -23,6 +23,8 @@ export function App() {
       <Route path="/product/:slug" element={<ProductPage />} />
       <Route path="/basket" element={<BasketPage />} />
       <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/checkout/success" element={<CheckoutReturnPage />} />
+      <Route path="/checkout/cancel" element={<CheckoutReturnPage cancelled />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />

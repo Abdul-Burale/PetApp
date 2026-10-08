@@ -23,7 +23,7 @@ export function App() {
       <Route path="/product/:slug" element={<ProductPage />} />
       <Route path="/basket" element={<BasketPage />} />
       <Route path="/checkout" element={<CheckoutPage />} />
-      <Route path="/checkout/success" element={<CheckoutReturnPage />} />
+      <Route path="/checkout/success/:orderNumber" element={<CheckoutReturnPage />} />
       <Route path="/checkout/cancel" element={<CheckoutReturnPage cancelled />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />

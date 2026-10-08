@@ -119,15 +119,15 @@ function ProductExperience({ product }: { product: ProductDetail }) {
         {alreadyInBasket > 0 && <p className="mt-2 text-sm text-gray-600">{alreadyInBasket} already in your basket. <Link to="/basket" className="text-brand underline">View basket</Link></p>}
         {remaining === 0 && <p className="mt-2 text-sm text-gray-600">Your basket has reached the limit of {maxCartQuantity} for this product.</p>}
         <div className="mt-5 grid gap-3">
-          <button type="button" disabled={!canAdd} onClick={() => add(product, selectedQuantity)} className="btn-primary w-full rounded-lg disabled:cursor-not-allowed disabled:opacity-50">{product.available ? 'Add to basket' : 'Currently unavailable'}</button>
-          <button type="button" disabled={!canAdd} onClick={buyNow} className="btn-secondary w-full rounded-lg disabled:cursor-not-allowed disabled:opacity-50">Buy now</button>
+          <button type="button" disabled={!canAdd} onClick={() => add(product, selectedQuantity)} className="btn w-full rounded-lg bg-[#f4c542] text-ink shadow-sm hover:bg-[#eab72d] focus:ring-[#b88700] disabled:cursor-not-allowed disabled:opacity-50">{product.available ? 'Add to basket' : 'Currently unavailable'}</button>
+          <button type="button" disabled={!canAdd} onClick={buyNow} className="btn w-full rounded-lg bg-[#f4c542] text-ink shadow-sm hover:bg-[#eab72d] focus:ring-[#b88700] disabled:cursor-not-allowed disabled:opacity-50">Buy now</button>
         </div>
         <p className="mt-2 text-xs text-gray-500">Buy now adds this item and takes your basket to checkout.</p>
         <div className="mt-6 flex items-start gap-3 border-t border-line pt-5 text-sm"><Truck size={20} className="mt-1 shrink-0 text-brand" aria-hidden="true" /><div><p className="font-semibold">Delivery & returns</p><p className="mt-1 leading-6 text-gray-600">Check delivery options for your postcode in the basket.</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-brand"><Link to="/delivery" className="underline">Delivery information</Link><Link to="/returns" className="underline">Returns information</Link></div></div></div>
       </section>
     </div>
 
-    {product.description && <section aria-labelledby="product-description-title" className="mt-10 sm:mt-14"><h2 id="product-description-title" className="text-xl font-bold">About this product</h2><p className="mt-4 max-w-4xl whitespace-pre-wrap break-words leading-7 text-gray-700">{product.description}</p></section>}
+    {product.description && <section aria-labelledby="product-description-title" className="mt-7 rounded-xl bg-[#faf8f1] p-4 sm:p-5"><h2 id="product-description-title" className="text-lg font-bold">About this product</h2><p className="mt-2 max-w-4xl whitespace-pre-wrap break-words text-sm leading-6 text-gray-700">{product.description}</p></section>}
     <section ref={detailsRef} aria-label="Product details" className="mt-8 overflow-hidden rounded-xl border border-line">
       <DetailSection title={`Reviews${product.reviewCount > 0 ? ` (${product.reviewCount})` : ''}`}>
         {product.reviewCount > 0 ? <><p className="font-semibold text-ink">{product.rating !== null ? `${product.rating.toFixed(1)} out of 5 · ` : ''}{product.reviewCount} customer {product.reviewCount === 1 ? 'review' : 'reviews'}</p><p className="mt-2">Written reviews are not currently available.</p></> : <p>No customer reviews yet.</p>}

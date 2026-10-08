@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useCatalog } from '../context/CatalogContext'
 import { useAuth } from '../context/AuthContext'
@@ -121,8 +121,8 @@ export function CheckoutPage() {
           customer: { email: form.email.trim(), phone: form.phone.trim() },
           shippingAddress, billingAddress: null, deliveryOptionCode: 'standard',
           // The API must replace {ORDER_NUMBER} after assigning the order number.
-          successUrl: `${origin}/checkout/success?orderNumber={ORDER_NUMBER}`,
-          cancelUrl: `${origin}/checkout/cancel?orderNumber={ORDER_NUMBER}`,
+          successUrl: `${origin}/checkout/success/{ORDER_NUMBER}`,
+          cancelUrl: `${origin}/checkout/cancel?order={ORDER_NUMBER}`,
         }
         currentAttempt = { key: crypto.randomUUID(), body }
         setAttempt(currentAttempt)
@@ -153,7 +153,8 @@ function CheckoutAddressFields({ form, update }: { form: Record<string, string>;
 
 export function CheckoutReturnPage({ cancelled = false }: { cancelled?: boolean }) {
   const [search] = useSearchParams()
-  const orderNumber = search.get('orderNumber') ?? ''
+  const { orderNumber: successOrderNumber } = useParams()
+  const orderNumber = cancelled ? search.get('order') ?? '' : successOrderNumber ?? ''
   const { removePurchased } = useCart()
   const [order, setOrder] = useState<CustomerOrder | null>(null)
   const [error, setError] = useState('')

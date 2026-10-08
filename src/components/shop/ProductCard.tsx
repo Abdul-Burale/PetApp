@@ -5,7 +5,7 @@ import { ProductImage } from './ProductImage'
 
 export function ProductCard({ product }: { product: Product }) {
   return <article className="group relative flex flex-col overflow-hidden border border-line bg-white transition hover:-translate-y-0.5 hover:shadow-card">
-    <Link to={`/product/${product.slug}`} aria-label={`View ${product.name}`} className="flex flex-1 flex-col focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand">
+    <Link to={`/product/${product.slug}`} aria-label={`Open product: ${product.name}`} className="flex flex-1 cursor-pointer flex-col focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand">
       <div className="relative aspect-square overflow-hidden bg-sand">
         <ProductImage src={product.image} alt={product.name} className="h-full w-full object-contain p-3 transition duration-500 group-hover:scale-105" />
         {product.badge && <span className="absolute left-3 top-3 bg-brand px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white">{product.badge}</span>}
@@ -17,7 +17,6 @@ export function ProductCard({ product }: { product: Product }) {
         {!product.available && <p className="mt-2 text-xs text-gray-500">Currently unavailable</p>}
         <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3">
           <span className="text-base font-bold sm:text-lg">£{product.price.toFixed(2)}</span>
-          <span className="inline-flex items-center rounded border border-brand px-3 py-2 text-xs font-bold text-brand group-hover:bg-sand">View product</span>
         </div>
       </div>
     </Link>

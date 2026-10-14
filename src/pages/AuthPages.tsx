@@ -13,7 +13,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
-  const destination = (location.state as LoginLocationState | null)?.from ?? '/account'
+  const requestedReturn = new URLSearchParams(location.search).get('returnTo')
+  const safeReturn = requestedReturn?.startsWith('/') && !requestedReturn.startsWith('//') && !requestedReturn.includes('\\') ? requestedReturn : undefined
+  const destination = (location.state as LoginLocationState | null)?.from ?? safeReturn ?? '/account'
   if (!authLoading && session) return <Navigate to={destination} replace />
 
   const submit = async (event: FormEvent) => {

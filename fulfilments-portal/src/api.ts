@@ -11,6 +11,7 @@ export interface FulfilmentsApi {
   getOrder(id: string): Promise<FulfilmentOrder>
   performAction(id: string, action: OrderAction): Promise<FulfilmentOrder>
   labels(): Promise<LabelRecord[]>
+  downloadLabel(id: string): Promise<Blob>
   preferences(): Promise<PortalPreferences>
   savePreferences(value: PortalPreferences): Promise<PortalPreferences>
 }
@@ -20,5 +21,6 @@ export async function createFulfilmentsApi(): Promise<FulfilmentsApi> {
     const { createMockFulfilmentsApi } = await import('./dev/mockApi')
     return createMockFulfilmentsApi()
   }
-  throw new PortalApiError('The production fulfilments API and secure subdomain sign-in are not configured. No order data has been loaded.')
+  const { createLiveFulfilmentsApi } = await import('./liveApi')
+  return createLiveFulfilmentsApi()
 }

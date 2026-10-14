@@ -1,5 +1,5 @@
-export type FulfilmentStatus = 'pending' | 'ready_to_pack' | 'packing' | 'packed' | 'label_created' | 'dispatched' | 'in_transit' | 'delivered' | 'cancelled' | 'on_hold'
-export type OrderAction = 'start_packing' | 'confirm_packed' | 'create_label' | 'dispatch' | 'place_on_hold' | 'release_hold'
+export type FulfilmentStatus = 'pending' | 'ready_to_pack' | 'packed' | 'label_created' | 'dispatched' | 'in_transit' | 'delivered' | 'cancelled' | 'on_hold'
+export type OrderAction = 'confirm_packed' | 'create_label' | 'dispatch' | 'refresh_tracking' | 'place_on_hold'
 
 // These are portal view models for the development mock only. They are not backend DTOs.
 export interface FulfilmentLine {
@@ -26,7 +26,7 @@ export interface FulfilmentOrder {
   shipping?: { carrier: string; service: string; trackingNumber?: string; trackingUrl?: string; labelStatus: string; labelUrl?: string }
   allowedActions: OrderAction[]
 }
-export interface FulfilmentActivity { id: string; action: string; orderNumber: string; actor: string; at: string }
+export interface FulfilmentActivity { id: string; fulfilmentId: string; action: string; orderNumber: string; actor: string; at: string }
 export interface DashboardStats {
   paidAwaiting: number
   readyToPack: number
@@ -39,6 +39,6 @@ export interface DashboardStats {
 }
 export interface OrderFilters { search: string; fulfilmentStatus: FulfilmentStatus | ''; paymentStatus: string }
 export interface OrderPage { orders: FulfilmentOrder[]; nextCursor: string | null; hasMore: boolean }
-export interface LabelRecord { orderNumber: string; customerName: string; carrier: string; service: string; labelStatus: string; trackingNumber?: string; createdAt: string }
+export interface LabelRecord { id: string; orderNumber: string; customerName: string; carrier: string; service: string; labelStatus: string; trackingNumber?: string; createdAt: string }
 export interface PortalPreferences { printerFormat: 'A4' | 'A6'; compactRows: boolean }
 export interface PortalAccess { authorised: true; staffLabel: string }

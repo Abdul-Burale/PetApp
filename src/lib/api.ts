@@ -421,7 +421,7 @@ async function publicFetch(path: string, init: RequestInit = {}, unreachableMess
   }
 }
 
-async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
+export async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
   if (!response.ok) throw await readError(response, fallback)
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

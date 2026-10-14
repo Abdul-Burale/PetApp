@@ -4,6 +4,7 @@ export interface BackendAccount {
   id?: string
   email?: string
   role?: string
+  permissions?: string[]
   displayName?: string
   firstName?: string
   lastName?: string

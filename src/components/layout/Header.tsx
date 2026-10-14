@@ -33,8 +33,11 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const mobileTitle = useId(), location = useLocation()
   const { count, total, setIsOpen } = useCart()
-  const { session, backendAccount } = useAuth()
-  const isStaff = backendAccount?.role?.toLowerCase() === 'staff'
+  const { session, backendAccount, backendLoading, backendError } = useAuth()
+  const isStaff = Boolean(session && backendAccount?.role?.toLowerCase() === 'staff')
+  const hasFulfilmentsAccess = backendAccount?.permissions?.includes('fulfilments:access') === true
+  const checkingFulfilmentsAccess = Boolean(session && !backendAccount && !backendError)
+  const fulfilmentsUrl = '/admin/fulfilments'
   const accountPath = session ? '/account' : '/login'
   useEffect(() => { setMobileOpen(false) }, [location])
   useEffect(() => {
@@ -60,12 +63,16 @@ export function Header() {
       {pets.map(pet => <PetDropdown key={pet} pet={pet} />)}
       {shopNavigation.map(item => <Link key={item.label} to={item.route} className="px-3 py-3 text-sm font-bold hover:text-brand">{item.label}</Link>)}
       {isStaff && <Link className={`${adminClass} my-1`} to="/account">Admin tools <span className="ml-1 rounded bg-rose-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Admin</span></Link>}
+      {hasFulfilmentsAccess && <a className={`${adminClass} my-1`} href={fulfilmentsUrl}>Go to Fulfilments</a>}
+      {checkingFulfilmentsAccess && backendLoading && <span role="status" className="my-1 px-3 py-2 text-xs text-gray-500">Checking staff access…</span>}
     </div></nav>
     <OverlayDialog open={mobileOpen} onClose={() => setMobileOpen(false)} labelledBy={mobileTitle} side="left">
       <div className="flex items-center justify-between border-b border-line p-5"><h2 id={mobileTitle} className="font-bold text-brand">My Pet Food</h2><button onClick={() => setMobileOpen(false)} aria-label="Close navigation" className="rounded p-2"><X /></button></div>
       <nav aria-label="Mobile navigation" className="flex-1 space-y-1 overflow-y-auto p-5">
         <Link to={accountPath} onClick={() => setMobileOpen(false)} className="block rounded px-3 py-3 font-semibold hover:bg-sand">{session ? 'My account' : 'Sign in'}</Link>
         {isStaff && <Link to="/account" onClick={() => setMobileOpen(false)} className={`${adminClass} block`}>Admin tools</Link>}
+        {hasFulfilmentsAccess && <a href={fulfilmentsUrl} onClick={() => setMobileOpen(false)} className={`${adminClass} block`}>Go to Fulfilments</a>}
+        {checkingFulfilmentsAccess && backendLoading && <p role="status" className="rounded px-3 py-3 text-sm text-gray-500">Checking staff access…</p>}
         <Link to="/shop" onClick={() => setMobileOpen(false)} className="block rounded px-3 py-3 font-semibold hover:bg-sand">Shop all products</Link>
         {pets.map(pet => <div key={pet} className="border-t border-line pt-2"><div className="flex items-center justify-between"><Link to={`/category/${pet.toLowerCase()}`} onClick={() => setMobileOpen(false)} className="rounded px-3 py-3 font-bold text-brand">{pet}</Link></div><div className="flex flex-wrap gap-2 px-3 pb-3">{petNavigation[pet].map(item => <Link key={item.label} to={`/shop?${new URLSearchParams({ pet, category: item.category })}`} onClick={() => setMobileOpen(false)} className="rounded-full border border-line px-3 py-2 text-sm">{item.label}</Link>)}</div></div>)}
         {shopNavigation.map(item => <Link key={item.label} to={item.route} onClick={() => setMobileOpen(false)} className="block rounded px-3 py-3 font-semibold hover:bg-sand">{item.label}</Link>)}

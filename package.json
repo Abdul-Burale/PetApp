@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "playwright test"
+    "test": "playwright test",
+    "dev:fulfilments": "npm --prefix fulfilments-portal run dev",
+    "build:fulfilments": "npm --prefix fulfilments-portal run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -27,5 +29,8 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17"
-  }
+  },
+  "workspaces": [
+    "fulfilments-portal"
+  ]
 }

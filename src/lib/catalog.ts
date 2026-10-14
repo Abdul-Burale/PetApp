@@ -15,6 +15,25 @@ export const petNavigation: Record<Pet, Array<{ label: string; category: Product
   Birds: [{ label: 'Food', category: 'Food' }, { label: 'Treats', category: 'Treats' }, { label: 'Toys', category: 'Toys' }, { label: 'Cage Accessories', category: 'Accessories' }, { label: 'Health', category: 'Health' }],
 }
 
+export function getVisiblePetNavigation(products: Product[]) {
+  return Object.fromEntries(pets.flatMap(pet => {
+    const stockedCategories = new Set(products.filter(product => product.pet === pet).map(product => product.category))
+    const visible = petNavigation[pet].filter(item => stockedCategories.has(item.category))
+    return visible.length ? [[pet, visible]] : []
+  })) as Partial<Record<Pet, Array<{ label: string; category: ProductCategory }>>>
+}
+
+export function getVisibleShopNavigation(products: Product[]) {
+  const stocked = new Set(products.map(product => product.category))
+  return shopNavigation.filter(item => {
+    if (item.label === 'Offers') return products.some(product => product.badge === 'Offer')
+    if (item.label === 'Food & Treats') return stocked.has('Food') || stocked.has('Treats')
+    if (item.label === 'Health & Care') return stocked.has('Health') || stocked.has('Grooming')
+    if (item.label === 'Toys & Accessories') return stocked.has('Toys') || stocked.has('Accessories') || stocked.has('Walking')
+    return true
+  })
+}
+
 const aliases: Record<string, string> = { cats: 'cat', dogs: 'dog', birds: 'bird', treats: 'treat', toys: 'toy', accessories: 'accessory', foods: 'food' }
 function words(value: string) {
   return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(Boolean).map(word => aliases[word] ?? word)

@@ -13,6 +13,7 @@ import { AdminProductFormPage, AdminProductsPage } from './pages/AdminProductPag
 import { ContentPageView } from './pages/ContentPages'
 import { AdminContentPage } from './pages/AdminContentPage'
 import { AdminSupportPage } from './pages/AdminSupportPage'
+import { AdminOrdersPage } from './pages/AdminOrdersPage'
 import { pageSlugs } from './lib/contentPages'
 
 export function App() {
@@ -35,6 +36,7 @@ export function App() {
       <Route path="/admin/products/:id" element={<StaffRoute><AdminProductFormPage /></StaffRoute>} />
       <Route path="/admin/content" element={<StaffRoute><AdminContentPage /></StaffRoute>} />
       <Route path="/admin/support" element={<StaffRoute><AdminSupportPage /></StaffRoute>} />
+      <Route path="/admin/orders" element={<StaffRoute><AdminOrdersPage /></StaffRoute>} />
       {pageSlugs.map(slug => <Route key={slug} path={`/${slug}`} element={<ContentPageView key={slug} slug={slug} />} />)}
       <Route path="*" element={<main className="container-page py-20"><h1 className="section-title">Page not found</h1><Link to="/" className="mt-4 inline-block text-brand underline">Return to home</Link></main>} />
     </Routes></div>

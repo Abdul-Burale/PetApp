@@ -121,6 +121,70 @@ export interface OrderHistoryPage {
   hasMore: boolean
 }
 
+export type StaffOrderStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'completed'
+export type StaffPaymentStatus = 'pending' | 'paid' | 'failed' | 'partially_refunded' | 'refunded' | 'disputed'
+export type StaffFulfilmentStatus = 'unfulfilled' | 'fulfilment_pending' | 'partially_dispatched' | 'dispatched' | 'delivered'
+
+export interface StaffOrderItem {
+  productId: string | null
+  productName: string
+  sku: string
+  quantity: number
+  unitPricePence: number
+  lineTotalPence: number
+  taxRateBps: number
+  unitTaxPence: number
+}
+
+export interface StaffOrderSummary {
+  orderNumber: string
+  createdAt: string
+  customerEmail: string
+  customerName: string | null
+  orderStatus: StaffOrderStatus
+  paymentStatus: StaffPaymentStatus
+  fulfilmentStatus: StaffFulfilmentStatus
+  currency: string
+  itemSubtotalPence: number
+  deliveryPence: number
+  taxPence: number
+  totalPence: number
+  items: StaffOrderItem[]
+}
+
+export interface StaffOrderAddress {
+  recipientName?: string | null
+  line1?: string | null
+  line2?: string | null
+  city?: string | null
+  county?: string | null
+  postcode?: string | null
+  countryCode?: string | null
+  phone?: string | null
+}
+
+export interface StaffOrderDetail extends StaffOrderSummary {
+  updatedAt: string
+  customerPhone: string | null
+  deliveryOptionCode: string | null
+  shippingAddress: StaffOrderAddress | null
+  billingAddress: StaffOrderAddress | null
+  checkoutExpiresAt: string | null
+  paidAt: string | null
+  cancelledAt: string | null
+  stripeCheckoutSessionId: string | null
+  paymentProvider: string | null
+  stripePaymentIntentId: string | null
+  paymentCreatedAt: string | null
+  paymentUpdatedAt: string | null
+}
+
+export interface StaffOrderPage {
+  data: StaffOrderSummary[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
 export type SupportStatus = 'NEW' | 'IN_PROGRESS' | 'WAITING_ON_CUSTOMER' | 'RESOLVED' | 'CLOSED'
 export interface SupportSummary { requestId: string; orderNumber?: string | null; subject: string; status: SupportStatus; messageCount: number; createdAt: string; updatedAt: string }
 export interface SupportMessage { authorType: 'CUSTOMER' | 'STAFF'; body: string; createdAt: string }
@@ -138,6 +202,18 @@ export function listMyOrders(limit = 20, cursor?: string) {
   const query = new URLSearchParams({ limit: String(limit) })
   if (cursor) query.set('cursor', cursor)
   return authenticatedJson<OrderHistoryPage>(`/v1/me/orders?${query}`, 'Your order history could not be loaded.')
+}
+export function listStaffOrders(filters: { search?: string; orderStatus?: StaffOrderStatus | ''; paymentStatus?: StaffPaymentStatus | ''; fulfilmentStatus?: StaffFulfilmentStatus | ''; limit?: number; cursor?: string } = {}) {
+  const query = new URLSearchParams({ limit: String(filters.limit ?? 25) })
+  if (filters.search?.trim()) query.set('search', filters.search.trim())
+  if (filters.orderStatus) query.set('orderStatus', filters.orderStatus)
+  if (filters.paymentStatus) query.set('paymentStatus', filters.paymentStatus)
+  if (filters.fulfilmentStatus) query.set('fulfilmentStatus', filters.fulfilmentStatus)
+  if (filters.cursor) query.set('cursor', filters.cursor)
+  return authenticatedJson<StaffOrderPage>(`/v1/staff/orders?${query}`, 'Orders could not be loaded.')
+}
+export function getStaffOrder(orderNumber: string) {
+  return authenticatedJson<StaffOrderDetail>(`/v1/staff/orders/${encodeURIComponent(orderNumber)}`, 'Order details could not be loaded.')
 }
 export function listSupportRequests(limit = 20) {
   return authenticatedJson<SupportSummary[]>(`/v1/me/support-requests?limit=${limit}`, 'Your support requests could not be loaded.')

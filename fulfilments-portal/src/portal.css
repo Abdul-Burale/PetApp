@@ -8,3 +8,6 @@
 .fulfilments-portal .order-link::before{content:"";display:inline-block;width:4px;height:16px;border-radius:4px;background:#eaa24e;flex:none}
 .fulfilments-portal .detail-grid .panel{border-left:2px solid #eaa24e;box-shadow:0 3px 14px rgba(47,54,45,.055)}
 .fulfilments-portal .detail-heading h2::before{content:"";display:inline-block;width:4px;height:22px;margin-right:10px;border-radius:4px;background:#eaa24e;vertical-align:-3px}
+.fulfilments-portal .store-return{display:inline-flex;flex:none;align-items:center;gap:7px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:8px 10px;color:var(--green-dark);font-size:11px;font-weight:700;text-decoration:none}
+.fulfilments-portal .store-return:hover{border-color:#eaa24e;background:#fff8ef}
+@media(max-width:420px){.fulfilments-portal .store-return{padding:8px}.fulfilments-portal .store-return span{font-size:0}.fulfilments-portal .store-return svg{width:18px;height:18px}}

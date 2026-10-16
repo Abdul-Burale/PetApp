@@ -1,5 +1,5 @@
 export type FulfilmentStatus = 'pending' | 'ready_to_pack' | 'packed' | 'label_created' | 'dispatched' | 'in_transit' | 'delivered' | 'cancelled' | 'on_hold'
-export type OrderAction = 'confirm_packed' | 'create_label' | 'dispatch' | 'refresh_tracking' | 'place_on_hold'
+export type OrderAction = 'confirm_packed' | 'create_label' | 'dispatch' | 'refresh_tracking' | 'place_on_hold' | 'cancel'
 
 // These are portal view models for the development mock only. They are not backend DTOs.
 export interface FulfilmentLine {

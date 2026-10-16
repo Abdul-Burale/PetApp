@@ -11,3 +11,38 @@
 .fulfilments-portal .store-return{display:inline-flex;flex:none;align-items:center;gap:7px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:8px 10px;color:var(--green-dark);font-size:11px;font-weight:700;text-decoration:none}
 .fulfilments-portal .store-return:hover{border-color:#eaa24e;background:#fff8ef}
 @media(max-width:420px){.fulfilments-portal .store-return{padding:8px}.fulfilments-portal .store-return span{font-size:0}.fulfilments-portal .store-return svg{width:18px;height:18px}}
+.fulfilments-portal .fulfilment-order-row.expanded{background:#fff8ef}
+.fulfilments-portal .fulfilment-order-row.expanded td:first-child{border-left-color:#cf7622}
+.fulfilments-portal .expanded-chevron{transform:rotate(180deg)}
+.fulfilments-portal .expanded-order-row>td{padding:0;border-top:0;background:#f8f8f5}
+.fulfilments-portal .inline-order-panel{margin:0 12px 14px;border:1px solid #e3d2bd;border-left:3px solid #eaa24e;border-radius:0 0 9px 9px;background:#fff;padding:18px;box-shadow:0 5px 18px rgba(53,47,38,.07)}
+.fulfilments-portal .inline-panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.fulfilments-portal .inline-panel-head h3{display:flex;align-items:center;gap:9px;margin:4px 0;font-size:15px}
+.fulfilments-portal .inline-panel-head p:not(.eyebrow){margin:4px 0;color:var(--muted);font-size:11px}
+.fulfilments-portal .inline-panel-links{display:flex;align-items:center;gap:14px}
+.fulfilments-portal .inline-close{display:grid}
+.fulfilments-portal .workflow-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:16px 0;padding:0;list-style:none}
+.fulfilments-portal .workflow-steps li{display:flex;align-items:center;gap:7px;border-bottom:2px solid var(--line);padding:0 0 8px;color:var(--muted);font-size:10px;text-transform:capitalize}
+.fulfilments-portal .workflow-steps li.complete{border-color:#eaa24e;color:#35483c}
+.fulfilments-portal .workflow-steps li span{display:grid;width:20px;height:20px;flex:none;place-items:center;border-radius:50%;background:#eff1ed;font-size:10px;font-weight:800}
+.fulfilments-portal .workflow-steps li.complete span{background:#fff0da;color:#9b5a10}
+.fulfilments-portal .inline-order-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px}
+.fulfilments-portal .inline-order-grid>section{min-width:0;border:1px solid #edf0ed;border-radius:7px;background:#fbfcfa;padding:12px}
+.fulfilments-portal .inline-order-grid h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#45594b}
+.fulfilments-portal .inline-order-grid address,.fulfilments-portal .inline-order-grid p{margin:0;color:#465248;font-size:11px;line-height:1.6;font-style:normal;overflow-wrap:anywhere}
+.fulfilments-portal .inline-service{margin-top:8px!important}
+.fulfilments-portal .inline-items{margin:0;padding:0;list-style:none}
+.fulfilments-portal .inline-items li{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #edf0ed;padding:7px 0;font-size:11px}
+.fulfilments-portal .inline-items li:first-child{border-top:0;padding-top:0}
+.fulfilments-portal .inline-items small{display:block;margin-top:3px;color:var(--muted);font-size:9px}
+.fulfilments-portal .inline-print{margin-top:9px}
+.fulfilments-portal .inline-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:13px}
+.fulfilments-portal .inline-actions>div{display:flex;flex-wrap:wrap;gap:8px}
+.fulfilments-portal .inline-actions>span{color:var(--muted);font-size:10px}
+.fulfilments-portal .button.danger{border-color:#efc9c5;background:#fff4f2;color:#943f38}
+.fulfilments-portal .button.danger:hover:not(:disabled){background:#ffe8e4}
+.fulfilments-portal .inline-error,.fulfilments-portal .inline-success{margin:10px 0 0;border-radius:6px;padding:9px 11px;font-size:11px}
+.fulfilments-portal .inline-error{background:#fff0ed;color:#923b35}
+.fulfilments-portal .inline-success{background:#eff8f0;color:#28623b}
+@media(max-width:900px){.fulfilments-portal .inline-order-grid{grid-template-columns:1fr 1fr}.fulfilments-portal .inline-order-grid>section:first-child{grid-column:1/-1}}
+@media(max-width:600px){.fulfilments-portal .inline-order-panel{margin:0 4px 8px;padding:13px}.fulfilments-portal .workflow-steps{grid-template-columns:1fr;gap:0}.fulfilments-portal .workflow-steps li{border-bottom:0;padding:3px 0}.fulfilments-portal .inline-order-grid{grid-template-columns:1fr}.fulfilments-portal .inline-order-grid>section:first-child{grid-column:auto}.fulfilments-portal .inline-actions{align-items:flex-start;flex-direction:column}.fulfilments-portal .inline-panel-head{gap:8px}}

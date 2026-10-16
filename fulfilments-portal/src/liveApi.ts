@@ -35,6 +35,7 @@ function toOrder(row: ApiQueueRow | ApiDetail, account?: BackendAccount): Fulfil
   if (row.fulfilmentStatus === 'packed' && permissions.includes('fulfilments:labels:create')) allowedActions.push('create_label')
   if (['packed', 'label_created'].includes(row.fulfilmentStatus) && permissions.includes('fulfilments:dispatch')) allowedActions.push('dispatch')
   if (['dispatched', 'in_transit'].includes(row.fulfilmentStatus) && permissions.includes('fulfilments:dispatch')) allowedActions.push('refresh_tracking')
+  if (['pending', 'ready_to_pack', 'packed', 'label_created', 'on_hold'].includes(row.fulfilmentStatus) && permissions.includes('fulfilments:manage')) allowedActions.push('cancel')
   const staffId = detail.assignedStaffId
   return {
     id: row.fulfilmentId,
@@ -143,6 +144,9 @@ export function createLiveFulfilmentsApi(): FulfilmentsApi {
       } else if (action === 'place_on_hold') {
         requirePermission('fulfilments:manage')
         await getJson<ApiDetail>(path, 'Order could not be placed on hold.', { method: 'PATCH', body: JSON.stringify({ status: 'on_hold' }) })
+      } else if (action === 'cancel') {
+        requirePermission('fulfilments:manage')
+        await getJson<ApiDetail>(path, 'Order could not be cancelled.', { method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }) })
       } else {
         throw new PortalApiError('This action is not supported by the backend contract.')
       }

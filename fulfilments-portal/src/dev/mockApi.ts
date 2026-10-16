@@ -26,10 +26,10 @@ function deriveStats(): DashboardStats {
 function updateOrder(order: FulfilmentOrder, action: OrderAction): FulfilmentOrder {
   const next = structuredClone(order)
   const now = new Date().toISOString()
-  const transitions: Partial<Record<OrderAction, FulfilmentStatus>> = { confirm_packed: 'packed', create_label: 'label_created', dispatch: 'dispatched', place_on_hold: 'on_hold', refresh_tracking: 'in_transit' }
+  const transitions: Partial<Record<OrderAction, FulfilmentStatus>> = { confirm_packed: 'packed', create_label: 'label_created', dispatch: 'dispatched', place_on_hold: 'on_hold', refresh_tracking: 'in_transit', cancel: 'cancelled' }
   const nextStatus = transitions[action]
   if (!nextStatus || !next.allowedActions.includes(action)) throw new Error('That action is not available for this mock order.')
-  const text: Record<OrderAction, string> = { confirm_packed: 'Packed', create_label: 'Mock label generated', dispatch: 'Dispatched', place_on_hold: 'Placed on hold', refresh_tracking: 'Tracking refreshed' }
+  const text: Record<OrderAction, string> = { confirm_packed: 'Packed', create_label: 'Mock label generated', dispatch: 'Dispatched', place_on_hold: 'Placed on hold', refresh_tracking: 'Tracking refreshed', cancel: 'Cancelled' }
   next.fulfilmentStatus = nextStatus
   next.history.unshift({ action: text[action], actor: 'Demo staff', at: now, note: action === 'create_label' ? 'Development mock only; no postage was purchased.' : undefined })
   next.allowedActions = nextStatus === 'ready_to_pack' ? ['confirm_packed', 'place_on_hold'] : nextStatus === 'packed' ? ['create_label', 'place_on_hold'] : nextStatus === 'label_created' ? ['dispatch', 'place_on_hold'] : nextStatus === 'on_hold' ? [] : nextStatus === 'dispatched' ? ['refresh_tracking'] : nextStatus === 'in_transit' ? ['refresh_tracking'] : []

@@ -19,6 +19,7 @@ export interface FulfilmentOrder {
   productCount: number
   fulfilmentStatus: FulfilmentStatus
   deliveryService: string
+  parcelWeightGrams?: number | null
   assignedStaff?: string | null
   deliveryAddress: { recipientName: string; line1: string; line2?: string; city: string; postcode: string; phone?: string }
   lines: FulfilmentLine[]

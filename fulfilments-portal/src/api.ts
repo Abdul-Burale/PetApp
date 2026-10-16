@@ -9,6 +9,7 @@ export interface FulfilmentsApi {
   dashboard(): Promise<DashboardStats>
   listOrders(filters: OrderFilters, cursor?: string): Promise<OrderPage>
   getOrder(id: string): Promise<FulfilmentOrder>
+  saveParcelWeight(id: string, weightGrams: number): Promise<FulfilmentOrder>
   performAction(id: string, action: OrderAction): Promise<FulfilmentOrder>
   labels(): Promise<LabelRecord[]>
   downloadLabel(id: string): Promise<Blob>

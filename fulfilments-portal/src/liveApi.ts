@@ -48,6 +48,7 @@ function toOrder(row: ApiQueueRow | ApiDetail, account?: BackendAccount): Fulfil
     productCount: row.items.reduce((sum, item) => sum + item.quantity, 0),
     fulfilmentStatus: row.fulfilmentStatus,
     deliveryService: row.shippingMethod,
+    parcelWeightGrams: detail.parcelWeightGrams ?? null,
     assignedStaff: staffId ? (staffId === account?.id ? 'You' : `Staff ${staffId.slice(0, 8)}`) : null,
     deliveryAddress: {
       recipientName: String(address.recipientName ?? name), line1: String(address.line1 ?? ''), line2: String(address.line2 ?? ''),
@@ -121,6 +122,11 @@ export function createLiveFulfilmentsApi(): FulfilmentsApi {
     async getOrder(id: string): Promise<FulfilmentOrder> {
       requirePermission('fulfilments:read')
       const detail = await getJson<ApiDetail>(`/v1/staff/fulfilments/${encodeURIComponent(id)}`, 'Order details could not be loaded.')
+      return toOrder(detail, account)
+    },
+    async saveParcelWeight(id: string, weightGrams: number): Promise<FulfilmentOrder> {
+      requirePermission('fulfilments:manage')
+      const detail = await getJson<ApiDetail>(`/v1/staff/fulfilments/${encodeURIComponent(id)}`, 'Parcel weight could not be saved.', { method: 'PATCH', body: JSON.stringify({ parcelWeightGrams: weightGrams }) })
       return toOrder(detail, account)
     },
     async performAction(id: string, action: OrderAction): Promise<FulfilmentOrder> {

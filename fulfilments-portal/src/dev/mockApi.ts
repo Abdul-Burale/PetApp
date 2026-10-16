@@ -25,6 +25,7 @@ function deriveStats(): DashboardStats {
 
 function updateOrder(order: FulfilmentOrder, action: OrderAction): FulfilmentOrder {
   const next = structuredClone(order)
+  if (action === 'create_label' && !next.parcelWeightGrams) throw new Error('Enter and save the parcel weight before generating a label.')
   const now = new Date().toISOString()
   const transitions: Partial<Record<OrderAction, FulfilmentStatus>> = { confirm_packed: 'packed', create_label: 'label_created', dispatch: 'dispatched', place_on_hold: 'on_hold', refresh_tracking: 'in_transit', cancel: 'cancelled' }
   const nextStatus = transitions[action]
@@ -52,6 +53,7 @@ export function createMockFulfilmentsApi(): import('../api').FulfilmentsApi {
       return { orders: result.slice(offset, offset + pageSize), nextCursor: offset + pageSize < result.length ? String(offset + pageSize) : null, hasMore: offset + pageSize < result.length }
     },
     async getOrder(id) { await wait(); const order = orders.find(item => item.id === id); if (!order) throw new Error('Order not found.'); return structuredClone(order) },
+    async saveParcelWeight(id, weightGrams) { await wait(); const order = orders.find(item => item.id === id); if (!order) throw new Error('Order not found.'); order.parcelWeightGrams = weightGrams; return structuredClone(order) },
     async performAction(id, action) { await wait(); const index = orders.findIndex(item => item.id === id); if (index < 0) throw new Error('Order not found.'); orders[index] = updateOrder(orders[index], action); return structuredClone(orders[index]) },
     async labels(): Promise<LabelRecord[]> { await wait(); return orders.filter(order => order.shipping?.labelStatus.includes('Mock')).map(order => ({ id: order.id, orderNumber: order.orderNumber, customerName: order.customerName, carrier: order.shipping?.carrier ?? '—', service: order.shipping?.service ?? '—', labelStatus: order.shipping?.labelStatus ?? 'Unknown', trackingNumber: order.shipping?.trackingNumber, createdAt: order.history.find(event => event.action.toLowerCase().includes('label'))?.at ?? order.orderDate })) },
     async downloadLabel() { await wait(); return new Blob(['Mock label; development only'], { type: 'application/pdf' }) },
